@@ -1,11 +1,21 @@
 import { Component, HostListener, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+
 import { PropertyService } from '../services/property';
-import { getWallPolygon } from '../utils/wall-geometry';
+
 import { Door } from '../models/door';
 import { Window } from '../models/window';
+import { Wall } from '../models/wall';
+
+import { getWallPolygon } from '../utils/wall-geometry';
+import { getClosestWall, snapAngle, snapPoint, getWallSide } from '../utils/editor-geometry';
 
 type EditorTool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'sensor';
+
+type Point = {
+  x: number;
+  y: number;
+};
 
 @Component({
   selector: 'app-editor',
@@ -15,23 +25,40 @@ type EditorTool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'sensor';
   styleUrl: './editor.scss',
 })
 export class Editor implements OnInit {
+  // --------------------------------------------------
+  // Selection
+  // --------------------------------------------------
+
   selectedWallId: string | null = null;
   selectedRoomId: string | null = null;
   selectedDoorId: string | null = null;
-  draggingDoorId: string | null = null;
   selectedWindowId: string | null = null;
-  draggingWindowId: string | null = null;
 
-  draggingEndpoint: 'start' | 'end' | null = null;
+  // --------------------------------------------------
+  // Dragging
+  // --------------------------------------------------
+
   draggingWallId: string | null = null;
-  angleSnap = 45;
-  snapTarget: { x: number; y: number } | null = null;
+  draggingEndpoint: 'start' | 'end' | null = null;
+
+  draggingDoorId: string | null = null;
+  draggingWindowId: string | null = null;
+  placingSide: 1 | -1 = 1;
+
+  // --------------------------------------------------
+  // Editor state
+  // --------------------------------------------------
 
   activeTool: EditorTool = 'select';
+
+  angleSnap = 45;
   snapDistance = 20;
+
   shiftPressed = false;
-  drawingStart: { x: number; y: number } | null = null;
-  mousePosition: { x: number; y: number } | null = null;
+
+  drawingStart: Point | null = null;
+  mousePosition: Point | null = null;
+  snapTarget: Point | null = null;
 
   constructor(public propertyService: PropertyService) {}
 
@@ -39,25 +66,82 @@ export class Editor implements OnInit {
     this.propertyService.recalculateRooms();
   }
 
+  // ==================================================
+  // TOOL
+  // ==================================================
+
   setTool(tool: EditorTool) {
     this.activeTool = tool;
 
-    // Cancel any unfinished wall
     this.drawingStart = null;
 
-    // Stop dragging
     this.draggingWallId = null;
     this.draggingEndpoint = null;
 
-    // Clear snapping
+    this.draggingDoorId = null;
+    this.draggingWindowId = null;
+
     this.snapTarget = null;
+
+    this.placementPreview = null;
   }
 
-  getWallPoints(wall: any): string {
-    const polygon = getWallPolygon(wall);
+  getCursorClass(): string {
+    switch (this.activeTool) {
+      case 'wall':
+        return 'cursor-wall';
 
-    return polygon.points.map((point) => `${point.x},${point.y}`).join(' ');
+      case 'door':
+        return 'cursor-door';
+
+      case 'window':
+        return 'cursor-window';
+
+      case 'room':
+        return 'cursor-room';
+
+      case 'sensor':
+        return 'cursor-sensor';
+
+      case 'select':
+      default:
+        return 'cursor-select';
+    }
   }
+
+  getSelectedType(): 'wall' | 'door' | 'window' | 'room' | null {
+    if (this.selectedWallId) {
+      return 'wall';
+    }
+
+    if (this.selectedDoorId) {
+      return 'door';
+    }
+
+    if (this.selectedWindowId) {
+      return 'window';
+    }
+
+    if (this.selectedRoomId) {
+      return 'room';
+    }
+
+    return null;
+  }
+
+  // ==================================================
+  // WALL DISPLAY
+  // ==================================================
+
+  getWallPoints(wall: Wall): string {
+    return getWallPolygon(wall)
+      .map((point) => `${point.x},${point.y}`)
+      .join(' ');
+  }
+
+  // ==================================================
+  // SELECTION
+  // ==================================================
 
   selectWall(wallId: string, event?: MouseEvent) {
     event?.stopPropagation();
@@ -68,6 +152,20 @@ export class Editor implements OnInit {
 
     this.selectedWallId = wallId;
     this.selectedDoorId = null;
+    this.selectedWindowId = null;
+    this.selectedRoomId = null;
+  }
+
+  selectDoor(doorId: string, event: MouseEvent) {
+    event.stopPropagation();
+
+    if (this.activeTool !== 'select') {
+      return;
+    }
+
+    this.selectedDoorId = doorId;
+    this.selectedWallId = null;
+    this.selectedWindowId = null;
     this.selectedRoomId = null;
   }
 
@@ -84,17 +182,29 @@ export class Editor implements OnInit {
     this.selectedRoomId = null;
   }
 
-  selectDoor(doorId: string, event: MouseEvent) {
+  selectRoom(roomId: string, event: MouseEvent) {
     event.stopPropagation();
 
     if (this.activeTool !== 'select') {
       return;
     }
 
-    this.selectedDoorId = doorId;
+    this.selectedRoomId = roomId;
+    this.selectedWallId = null;
+    this.selectedDoorId = null;
+    this.selectedWindowId = null;
+  }
+
+  clearSelection() {
     this.selectedWallId = null;
     this.selectedRoomId = null;
+    this.selectedDoorId = null;
+    this.selectedWindowId = null;
   }
+
+  // ==================================================
+  // DELETE
+  // ==================================================
 
   deleteSelected() {
     if (this.selectedDoorId) {
@@ -109,7 +219,6 @@ export class Editor implements OnInit {
 
     if (this.selectedWallId) {
       this.deleteSelectedWall();
-      return;
     }
   }
 
@@ -119,7 +228,6 @@ export class Editor implements OnInit {
     }
 
     this.propertyService.removeDoor(this.selectedDoorId);
-
     this.selectedDoorId = null;
   }
 
@@ -129,9 +237,40 @@ export class Editor implements OnInit {
     }
 
     this.propertyService.removeWindow(this.selectedWindowId);
-
     this.selectedWindowId = null;
   }
+
+  deleteSelectedWall() {
+    if (!this.selectedWallId) {
+      return;
+    }
+
+    this.propertyService.removeWall(this.selectedWallId);
+    this.selectedWallId = null;
+  }
+
+  // ==================================================
+  // ROOM
+  // ==================================================
+
+  getSelectedRoom() {
+    return this.propertyService.property.rooms.find((room) => room.id === this.selectedRoomId);
+  }
+
+  renameSelectedRoom(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const room = this.getSelectedRoom();
+
+    if (!room) {
+      return;
+    }
+
+    room.name = input.value;
+  }
+
+  // ==================================================
+  // DOOR DRAGGING
+  // ==================================================
 
   startDraggingDoor(event: MouseEvent, doorId: string) {
     event.stopPropagation();
@@ -143,9 +282,46 @@ export class Editor implements OnInit {
     this.selectedDoorId = doorId;
     this.selectedWallId = null;
     this.selectedRoomId = null;
+    this.selectedWindowId = null;
 
     this.draggingDoorId = doorId;
   }
+
+  dragDoor(point: Point) {
+    const door = this.propertyService.property.doors.find(
+      (door) => door.id === this.draggingDoorId,
+    );
+
+    if (!door) {
+      return;
+    }
+
+    const result = getClosestWall(this.propertyService.property.walls, point);
+
+    if (!result.wall) {
+      return;
+    }
+
+    const attachDistance = 40;
+
+    if (result.distance > attachDistance) {
+      this.snapTarget = null;
+      return;
+    }
+
+    door.wallId = result.wall.id;
+    door.position = result.position;
+
+    this.snapTarget = {
+      x: result.wall.start.x + (result.wall.end.x - result.wall.start.x) * result.position,
+
+      y: result.wall.start.y + (result.wall.end.y - result.wall.start.y) * result.position,
+    };
+  }
+
+  // ==================================================
+  // WINDOW DRAGGING
+  // ==================================================
 
   startDraggingWindow(event: MouseEvent, windowId: string) {
     event.stopPropagation();
@@ -162,63 +338,16 @@ export class Editor implements OnInit {
     this.draggingWindowId = windowId;
   }
 
-  selectRoom(roomId: string, event: MouseEvent) {
-    event.stopPropagation();
-
-    if (this.activeTool !== 'select') {
-      return;
-    }
-
-    this.selectedRoomId = roomId;
-    this.selectedWallId = null;
-    this.selectedDoorId = null;
-  }
-
-  dragDoor(point: { x: number; y: number }) {
-    const door = this.propertyService.property.doors.find((d) => d.id === this.draggingDoorId);
-
-    if (!door) {
-      return;
-    }
-
-    const result = this.getClosestWall(point);
-
-    if (!result.wall) {
-      return;
-    }
-
-    // Only attach when reasonably close to a wall
-    const attachDistance = 40;
-
-    if (result.distance > attachDistance) {
-      this.snapTarget = null;
-      return;
-    }
-
-    // Attach door to this wall
-    door.wallId = result.wall.id;
-
-    // Position along wall
-    door.position = result.position;
-
-    // Show where we're snapping
-    this.snapTarget = {
-      x: result.wall.start.x + (result.wall.end.x - result.wall.start.x) * result.position,
-
-      y: result.wall.start.y + (result.wall.end.y - result.wall.start.y) * result.position,
-    };
-  }
-
-  dragWindow(point: { x: number; y: number }) {
+  dragWindow(point: Point) {
     const window = this.propertyService.property.windows.find(
-      (w) => w.id === this.draggingWindowId,
+      (window) => window.id === this.draggingWindowId,
     );
 
     if (!window) {
       return;
     }
 
-    const result = this.getClosestWall(point);
+    const result = getClosestWall(this.propertyService.property.walls, point);
 
     if (!result.wall) {
       return;
@@ -241,98 +370,9 @@ export class Editor implements OnInit {
     };
   }
 
-  getSelectedRoom() {
-    return this.propertyService.property.rooms.find((room) => room.id === this.selectedRoomId);
-  }
-
-  renameSelectedRoom(event: Event) {
-    const input = event.target as HTMLInputElement;
-
-    const room = this.getSelectedRoom();
-
-    if (!room) {
-      return;
-    }
-
-    room.name = input.value;
-  }
-
-  getClosestWall(point: { x: number; y: number }) {
-    let closestWall = null;
-    let closestDistance = Infinity;
-    let closestPosition = 0;
-
-    for (const wall of this.propertyService.property.walls) {
-      const dx = wall.end.x - wall.start.x;
-      const dy = wall.end.y - wall.start.y;
-
-      const lengthSquared = dx * dx + dy * dy;
-
-      if (lengthSquared === 0) {
-        continue;
-      }
-
-      let t = ((point.x - wall.start.x) * dx + (point.y - wall.start.y) * dy) / lengthSquared;
-
-      // Keep position between 0 and 1
-      t = Math.max(0, Math.min(1, t));
-
-      const closestPoint = {
-        x: wall.start.x + t * dx,
-        y: wall.start.y + t * dy,
-      };
-
-      const distance = Math.hypot(point.x - closestPoint.x, point.y - closestPoint.y);
-
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestWall = wall;
-        closestPosition = t;
-      }
-    }
-
-    return {
-      wall: closestWall,
-      position: closestPosition,
-      distance: closestDistance,
-    };
-  }
-
-  deleteSelectedWall() {
-    if (!this.selectedWallId) {
-      return;
-    }
-
-    this.propertyService.removeWall(this.selectedWallId);
-
-    this.selectedWallId = null;
-  }
-
-  @HostListener('window:keydown', ['$event'])
-  handleKeyboard(event: KeyboardEvent) {
-    if (event.key === 'Shift') {
-      this.shiftPressed = true;
-    }
-
-    if ((event.key === 'Delete' || event.key === 'Backspace') && this.activeTool === 'select') {
-      if (this.selectedDoorId) {
-        this.deleteSelectedDoor();
-        return;
-      }
-
-      if (this.selectedWallId) {
-        this.deleteSelectedWall();
-        return;
-      }
-    }
-  }
-
-  @HostListener('window:keyup', ['$event'])
-  handleKeyboardUp(event: KeyboardEvent) {
-    if (event.key === 'Shift') {
-      this.shiftPressed = false;
-    }
-  }
+  // ==================================================
+  // WALL DRAGGING
+  // ==================================================
 
   startDragging(event: MouseEvent, wallId: string, endpoint: 'start' | 'end') {
     event.stopPropagation();
@@ -341,43 +381,60 @@ export class Editor implements OnInit {
     this.draggingEndpoint = endpoint;
   }
 
-  stopDragging() {
-    if (this.draggingWallId) {
-      this.propertyService.wallChanged();
+  dragWallEndpoint(point: Point) {
+    if (!this.draggingWallId || !this.draggingEndpoint) {
+      return;
     }
 
-    this.draggingWallId = null;
-    this.draggingEndpoint = null;
-    this.draggingDoorId = null;
-    this.draggingWindowId = null;
-    this.snapTarget = null;
+    const wall = this.propertyService.property.walls.find(
+      (wall) => wall.id === this.draggingWallId,
+    );
+
+    if (!wall) {
+      return;
+    }
+
+    let dragPoint = point;
+
+    if (this.shiftPressed) {
+      const fixedPoint = this.draggingEndpoint === 'start' ? wall.end : wall.start;
+
+      dragPoint = snapAngle(fixedPoint, point, this.angleSnap);
+    }
+
+    const snappedPoint = snapPoint(
+      this.propertyService.property.walls,
+      dragPoint,
+      this.snapDistance,
+      this.draggingWallId,
+    );
+
+    if (snappedPoint.x !== point.x || snappedPoint.y !== point.y) {
+      this.snapTarget = snappedPoint;
+    } else {
+      this.snapTarget = null;
+    }
+
+    wall[this.draggingEndpoint] = {
+      x: snappedPoint.x,
+      y: snappedPoint.y,
+    };
   }
 
+  // ==================================================
+  // MOUSE
+  // ==================================================
+
   onMouseMove(event: MouseEvent) {
-    const svg = event.currentTarget as SVGSVGElement;
-    if (!svg) return;
-
-    // Convert browser coordinates → SVG coordinates
-    const point = svg.createSVGPoint();
-    point.x = event.clientX;
-    point.y = event.clientY;
-
-    const matrix = svg.getScreenCTM()?.inverse();
-    if (!matrix) return;
-
-    const svgPoint = point.matrixTransform(matrix);
-
-    const rawPoint = {
-      x: svgPoint.x,
-      y: svgPoint.y,
-    };
+    const point = this.getSvgPoint(event);
 
     // --------------------------------
-    // Dragging a door
+    // Door / Window placement preview
     // --------------------------------
 
-    if (this.draggingDoorId) {
-      this.dragDoor(rawPoint);
+    if (this.activeTool === 'door' || this.activeTool === 'window') {
+      this.mousePosition = point;
+      this.updatePlacementPreview(point);
       return;
     }
 
@@ -385,8 +442,17 @@ export class Editor implements OnInit {
     // Dragging a door
     // --------------------------------
 
+    if (this.draggingDoorId) {
+      this.dragDoor(point);
+      return;
+    }
+
+    // --------------------------------
+    // Dragging a window
+    // --------------------------------
+
     if (this.draggingWindowId) {
-      this.dragWindow(rawPoint);
+      this.dragWindow(point);
       return;
     }
 
@@ -395,11 +461,11 @@ export class Editor implements OnInit {
     // --------------------------------
 
     if (this.activeTool === 'wall' && this.drawingStart) {
-      const drawingPoint = this.getDrawingPoint(rawPoint);
+      const drawingPoint = this.getDrawingPoint(point);
 
       this.mousePosition = drawingPoint;
 
-      if (drawingPoint.x !== rawPoint.x || drawingPoint.y !== rawPoint.y) {
+      if (drawingPoint.x !== point.x || drawingPoint.y !== point.y) {
         this.snapTarget = drawingPoint;
       } else {
         this.snapTarget = null;
@@ -412,7 +478,7 @@ export class Editor implements OnInit {
     // Normal mouse movement
     // --------------------------------
 
-    this.mousePosition = rawPoint;
+    this.mousePosition = point;
 
     // --------------------------------
     // Existing wall endpoint dragging
@@ -423,40 +489,10 @@ export class Editor implements OnInit {
       return;
     }
 
-    let dragPoint = rawPoint;
-
-    if (this.shiftPressed) {
-      const wall = this.propertyService.property.walls.find((w) => w.id === this.draggingWallId);
-
-      if (wall) {
-        const fixedPoint = this.draggingEndpoint === 'start' ? wall.end : wall.start;
-
-        dragPoint = this.snapAngle(fixedPoint, rawPoint);
-      }
-    }
-
-    const snappedPoint = this.snapPoint(dragPoint, this.draggingWallId, this.draggingEndpoint);
-
-    // Show snap indicator
-    if (snappedPoint.x !== rawPoint.x || snappedPoint.y !== rawPoint.y) {
-      this.snapTarget = snappedPoint;
-    } else {
-      this.snapTarget = null;
-    }
-
-    // Find the wall
-    const wall = this.propertyService.property.walls.find((w) => w.id === this.draggingWallId);
-
-    if (!wall) return;
-
-    // Move the endpoint
-    wall[this.draggingEndpoint] = {
-      x: snappedPoint.x,
-      y: snappedPoint.y,
-    };
+    this.dragWallEndpoint(point);
   }
 
-  getSvgPoint(event: MouseEvent): { x: number; y: number } {
+  getSvgPoint(event: MouseEvent): Point {
     const svg = event.currentTarget as SVGSVGElement;
 
     const point = svg.createSVGPoint();
@@ -477,6 +513,81 @@ export class Editor implements OnInit {
       y: svgPoint.y,
     };
   }
+
+  // --------------------------------------------------
+  // Placement preview
+  // --------------------------------------------------
+
+  placementPreview: {
+    wallId: string;
+    position: number;
+    side: 1 | -1;
+  } | null = null;
+
+  updatePlacementPreview(point: Point) {
+    if (this.activeTool !== 'door' && this.activeTool !== 'window') {
+      this.placementPreview = null;
+      return;
+    }
+
+    const result = getClosestWall(this.propertyService.property.walls, point);
+
+    if (!result.wall) {
+      this.placementPreview = null;
+      return;
+    }
+
+    const attachDistance = 40;
+
+    if (result.distance > attachDistance) {
+      this.placementPreview = null;
+      return;
+    }
+
+    if (result.position < 0.1 || result.position > 0.9) {
+      this.placementPreview = null;
+      return;
+    }
+
+    this.placementPreview = {
+      wallId: result.wall.id,
+      position: result.position,
+      side: getWallSide(result.wall, point),
+    };
+  }
+
+  getPlacementTransform(): string {
+    if (!this.placementPreview) {
+      return '';
+    }
+
+    const wall = this.propertyService.property.walls.find(
+      (wall) => wall.id === this.placementPreview!.wallId,
+    );
+
+    if (!wall) {
+      return '';
+    }
+
+    const x = wall.start.x + (wall.end.x - wall.start.x) * this.placementPreview.position;
+
+    const y = wall.start.y + (wall.end.y - wall.start.y) * this.placementPreview.position;
+
+    const angle =
+      (Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x) * 180) / Math.PI;
+
+    const flip = this.placementPreview.side === -1 ? 'scale(1 -1)' : '';
+
+    return `
+    translate(${x} ${y})
+    rotate(${angle})
+    ${flip}
+  `;
+  }
+
+  // ==================================================
+  // MOUSE CLICK
+  // ==================================================
 
   onSvgClick(event: MouseEvent) {
     switch (this.activeTool) {
@@ -506,73 +617,83 @@ export class Editor implements OnInit {
     }
   }
 
+  // ==================================================
+  // WALL CREATION
+  // ==================================================
+
   handleWallClick(event: MouseEvent) {
     const point = this.getSvgPoint(event);
 
     if (!this.drawingStart) {
-      this.drawingStart = this.snapPoint(point);
+      this.drawingStart = snapPoint(this.propertyService.property.walls, point, this.snapDistance);
 
       return;
     }
 
     const finalPoint = this.getDrawingPoint(point);
 
-    const newWall = {
+    const newWall: Wall = {
       id: crypto.randomUUID(),
-
       start: this.drawingStart,
-
       end: finalPoint,
-
       thickness: 12,
-
       height: 96,
     };
 
     this.propertyService.addWall(newWall);
 
     this.drawingStart = null;
+    this.snapTarget = null;
   }
 
-  handleRoomClick(event: MouseEvent) {
-    console.log('Room tool clicked');
+  getDrawingPoint(point: Point): Point {
+    if (!this.drawingStart) {
+      return point;
+    }
+
+    let finalPoint = point;
+
+    if (this.shiftPressed) {
+      finalPoint = snapAngle(this.drawingStart, finalPoint, this.angleSnap);
+    }
+
+    return snapPoint(this.propertyService.property.walls, finalPoint, this.snapDistance);
   }
+
+  // ==================================================
+  // DOOR CREATION
+  // ==================================================
 
   handleDoorClick(event: MouseEvent) {
     const point = this.getSvgPoint(event);
 
-    const result = this.getClosestWall(point);
+    const result = getClosestWall(this.propertyService.property.walls, point);
 
     if (!result.wall) {
       return;
     }
 
-    // Don't allow doors too close to the ends
     if (result.position < 0.1 || result.position > 0.9) {
       return;
     }
 
-    const door = {
+    const side = getWallSide(result.wall, point);
+
+    const door: Door = {
       id: crypto.randomUUID(),
-
       wallId: result.wall.id,
-
       position: result.position,
-
       width: 80,
-
-      swing: 'right' as const,
-
+      swing: 'right',
       open: false,
+      side,
     };
 
     this.propertyService.addDoor(door);
-
-    console.log('Door created:', door);
   }
 
   getDoorTransform(door: Door): string {
-    const wall = this.propertyService.property.walls.find((w) => w.id === door.wallId);
+    const wall = this.propertyService.property.walls.find((wall) => wall.id === door.wallId);
 
     if (!wall) {
       return '';
@@ -585,45 +706,48 @@ export class Editor implements OnInit {
     const angle =
       (Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x) * 180) / Math.PI;
 
+    const flip = door.side === -1 ? 'scale(1 -1)' : '';
+
     return `
     translate(${x} ${y})
     rotate(${angle})
+    ${flip}
   `;
   }
+
+  // ==================================================
+  // WINDOW CREATION
+  // ==================================================
 
   handleWindowClick(event: MouseEvent) {
     const point = this.getSvgPoint(event);
 
-    const result = this.getClosestWall(point);
+    const result = getClosestWall(this.propertyService.property.walls, point);
 
     if (!result.wall) {
       return;
     }
 
-    // Don't allow windows right at the corners
     if (result.position < 0.1 || result.position > 0.9) {
       return;
     }
 
-    const window = {
+    const side = getWallSide(result.wall, point);
+
+    const window: Window = {
       id: crypto.randomUUID(),
-
       wallId: result.wall.id,
-
       position: result.position,
-
       width: 100,
-
       height: 48,
+      side,
     };
 
     this.propertyService.addWindow(window);
-
-    console.log('Window created:', window);
   }
 
   getWindowTransform(window: Window): string {
-    const wall = this.propertyService.property.walls.find((w) => w.id === window.wallId);
+    const wall = this.propertyService.property.walls.find((wall) => wall.id === window.wallId);
 
     if (!wall) {
       return '';
@@ -636,91 +760,68 @@ export class Editor implements OnInit {
     const angle =
       (Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x) * 180) / Math.PI;
 
-    return `translate(${x} ${y}) rotate(${angle})`;
+    const flip = window.side === -1 ? 'scale(1 -1)' : '';
+
+    return `
+    translate(${x} ${y})
+    rotate(${angle})
+    ${flip}
+  `;
+  }
+
+  // ==================================================
+  // OTHER TOOLS
+  // ==================================================
+
+  handleRoomClick(event: MouseEvent) {
+    console.log('Room tool clicked');
   }
 
   handleSensorClick(event: MouseEvent) {
     console.log('Sensor tool clicked');
   }
 
-  clearSelection() {
-    this.selectedWallId = null;
-    this.selectedRoomId = null;
-    this.selectedDoorId = null;
-    this.selectedWindowId = null;
+  // ==================================================
+  // DRAG END
+  // ==================================================
+
+  stopDragging() {
+    if (this.draggingWallId) {
+      this.propertyService.wallChanged();
+    }
+
+    this.draggingWallId = null;
+    this.draggingEndpoint = null;
+
+    this.draggingDoorId = null;
+    this.draggingWindowId = null;
+
+    this.snapTarget = null;
+
+    if (this.activeTool === 'door' || this.activeTool === 'window') {
+      this.placementPreview = null;
+    }
   }
 
-  snapPoint(
-    point: { x: number; y: number },
-    wallId?: string,
-    endpoint?: 'start' | 'end',
-  ): { x: number; y: number } {
-    for (const wall of this.propertyService.property.walls) {
-      // Don't snap to the endpoint we're currently dragging
-      if (wall.id === wallId) {
-        continue;
-      }
+  // ==================================================
+  // KEYBOARD
+  // ==================================================
 
-      const endpoints = [wall.start, wall.end];
-
-      for (const target of endpoints) {
-        const dx = point.x - target.x;
-        const dy = point.y - target.y;
-
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance <= this.snapDistance) {
-          return {
-            x: target.x,
-            y: target.y,
-          };
-        }
-      }
+  @HostListener('window:keydown', ['$event'])
+  handleKeyboard(event: KeyboardEvent) {
+    if (event.key === 'Shift') {
+      this.shiftPressed = true;
     }
 
-    return point;
+    if ((event.key === 'Delete' || event.key === 'Backspace') && this.activeTool === 'select') {
+      this.deleteSelected();
+    }
   }
 
-  snapAngle(
-    start: { x: number; y: number },
-    end: { x: number; y: number },
-  ): { x: number; y: number } {
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    if (distance === 0) {
-      return end;
+  @HostListener('window:keyup', ['$event'])
+  handleKeyboardUp(event: KeyboardEvent) {
+    if (event.key === 'Shift') {
+      this.shiftPressed = false;
     }
-
-    const angle = Math.atan2(dy, dx);
-
-    const snapIncrement = (this.angleSnap * Math.PI) / 180;
-
-    const snappedAngle = Math.round(angle / snapIncrement) * snapIncrement;
-
-    return {
-      x: start.x + Math.cos(snappedAngle) * distance,
-      y: start.y + Math.sin(snappedAngle) * distance,
-    };
-  }
-
-  getDrawingPoint(point: { x: number; y: number }): { x: number; y: number } {
-    if (!this.drawingStart) {
-      return point;
-    }
-
-    let finalPoint = point;
-
-    // Only constrain the angle while Shift is held
-    if (this.shiftPressed) {
-      finalPoint = this.snapAngle(this.drawingStart, finalPoint);
-    }
-
-    // Endpoint snapping is always active
-    finalPoint = this.snapPoint(finalPoint);
-
-    return finalPoint;
   }
 }

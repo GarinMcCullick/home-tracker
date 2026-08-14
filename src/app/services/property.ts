@@ -47,10 +47,12 @@ export class PropertyService {
         height: 96,
       },
     ],
+
     rooms: [],
     doors: [],
     windows: [],
   };
+
   recalculateRooms() {
     this.property.rooms = this.roomService.findRooms(this.property.walls);
   }
@@ -68,14 +70,21 @@ export class PropertyService {
     this.property.doors = this.property.doors.filter((door) => door.id !== doorId);
   }
 
+  addWindow(window: Window) {
+    this.property.windows.push(window);
+  }
+
+  removeWindow(windowId: string) {
+    this.property.windows = this.property.windows.filter((window) => window.id !== windowId);
+  }
+
   removeWall(wallId: string) {
-    // Remove the wall
     this.property.walls = this.property.walls.filter((wall) => wall.id !== wallId);
 
-    // Remove doors attached to that wall
+    // Remove doors attached to this wall
     this.property.doors = this.property.doors.filter((door) => door.wallId !== wallId);
 
-    // Remove windows attached to that wall
+    // Remove windows attached to this wall
     this.property.windows = this.property.windows.filter((window) => window.wallId !== wallId);
 
     this.recalculateRooms();
@@ -83,13 +92,5 @@ export class PropertyService {
 
   wallChanged() {
     this.recalculateRooms();
-  }
-
-  addWindow(window: Window) {
-    this.property.windows.push(window);
-  }
-
-  removeWindow(windowId: string) {
-    this.property.windows = this.property.windows.filter((window) => window.id !== windowId);
   }
 }

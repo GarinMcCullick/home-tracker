@@ -5,4 +5,5 @@ export interface Door {
   width: number;
   swing: 'left' | 'right';
   open: boolean;
+  side: 1 | -1;
 }
