@@ -6,7 +6,12 @@
     <button [class.active]="activeTool === 'door'" (click)="setTool('door')">Door</button>
     <button [class.active]="activeTool === 'window'" (click)="setTool('window')">Window</button>
     <button [class.active]="activeTool === 'sensor'" (click)="setTool('sensor')">Sensor</button>
-    <button [disabled]="!selectedWallId" (click)="deleteSelectedWall()">Delete</button>
+    <button
+      [disabled]="!selectedWallId && !selectedDoorId && !selectedWindowId && !selectedRoomId"
+      (click)="deleteSelected()"
+    >
+      Delete
+    </button>
   </div>
 
   <div class="workspace">
@@ -99,6 +104,90 @@
           stroke-dasharray="10 5"
           pointer-events="none"
         />
+      }
+
+      <!-- DOORS -->
+      @for (door of propertyService.property.doors; track door.id) {
+        <g
+          [attr.transform]="getDoorTransform(door)"
+          class="door"
+          [attr.pointer-events]="activeTool === 'select' ? 'auto' : 'none'"
+          (click)="selectDoor(door.id, $event)"
+          (mousedown)="startDraggingDoor($event, door.id)"
+        >
+          <!-- Door opening -->
+          <rect x="-40" y="-6" width="80" height="12" fill="white" />
+
+          <!-- Door panel -->
+          <line
+            x1="-40"
+            y1="0"
+            x2="40"
+            y2="0"
+            [attr.stroke]="selectedDoorId === door.id ? '#2196f3' : '#8b4513'"
+            stroke-width="6"
+          />
+
+          <!-- Swing arc -->
+          <path
+            d="M -40 0 A 80 80 0 0 1 40 80"
+            fill="none"
+            [attr.stroke]="selectedDoorId === door.id ? '#2196f3' : '#8b4513'"
+            stroke-width="2"
+          />
+
+          <!-- Selection indicator -->
+          @if (selectedDoorId === door.id) {
+            <circle
+              cx="0"
+              cy="0"
+              r="12"
+              fill="none"
+              stroke="#2196f3"
+              stroke-width="2"
+              pointer-events="none"
+            />
+          }
+        </g>
+      }
+      <!-- WINDOWS -->
+      @for (window of propertyService.property.windows; track window.id) {
+        <g
+          [attr.transform]="getWindowTransform(window)"
+          class="window"
+          [attr.pointer-events]="activeTool === 'select' ? 'auto' : 'none'"
+          (click)="selectWindow(window.id, $event)"
+          (mousedown)="startDraggingWindow($event, window.id)"
+        >
+          <!-- Opening -->
+          <rect x="-50" y="-7" width="100" height="14" fill="white" />
+
+          <!-- Glass -->
+          <rect
+            x="-45"
+            y="-4"
+            width="90"
+            height="8"
+            [attr.fill]="selectedWindowId === window.id ? '#2196f3' : '#60a5fa'"
+          />
+
+          <!-- Frame -->
+          <line x1="-50" y1="-7" x2="50" y2="-7" stroke="#555" stroke-width="3" />
+
+          <line x1="-50" y1="7" x2="50" y2="7" stroke="#555" stroke-width="3" />
+
+          @if (selectedWindowId === window.id) {
+            <rect
+              x="-58"
+              y="-15"
+              width="116"
+              height="30"
+              fill="none"
+              stroke="#2196f3"
+              stroke-width="2"
+            />
+          }
+        </g>
       }
     </svg>
   </div>

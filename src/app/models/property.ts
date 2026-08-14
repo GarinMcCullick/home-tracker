@@ -1,5 +1,7 @@
 import { Wall } from './wall';
 import { Room } from './room';
+import { Door } from './door';
+import { Window } from './window';
 
 export interface Property {
   id: string;
@@ -10,4 +12,6 @@ export interface Property {
 
   walls: Wall[];
   rooms: Room[];
+  doors: Door[];
+  windows: Window[];
 }
