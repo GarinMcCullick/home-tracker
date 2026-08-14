@@ -2,6 +2,8 @@ import { Component, HostListener, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { PropertyService } from '../services/property';
 import { getWallPolygon } from '../utils/wall-geometry';
+import { Door } from '../models/door';
+import { Window } from '../models/window';
 
 type EditorTool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'sensor';
 
@@ -15,6 +17,11 @@ type EditorTool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'sensor';
 export class Editor implements OnInit {
   selectedWallId: string | null = null;
   selectedRoomId: string | null = null;
+  selectedDoorId: string | null = null;
+  draggingDoorId: string | null = null;
+  selectedWindowId: string | null = null;
+  draggingWindowId: string | null = null;
+
   draggingEndpoint: 'start' | 'end' | null = null;
   draggingWallId: string | null = null;
   angleSnap = 45;
@@ -60,7 +67,99 @@ export class Editor implements OnInit {
     }
 
     this.selectedWallId = wallId;
+    this.selectedDoorId = null;
     this.selectedRoomId = null;
+  }
+
+  selectWindow(windowId: string, event: MouseEvent) {
+    event.stopPropagation();
+
+    if (this.activeTool !== 'select') {
+      return;
+    }
+
+    this.selectedWindowId = windowId;
+    this.selectedDoorId = null;
+    this.selectedWallId = null;
+    this.selectedRoomId = null;
+  }
+
+  selectDoor(doorId: string, event: MouseEvent) {
+    event.stopPropagation();
+
+    if (this.activeTool !== 'select') {
+      return;
+    }
+
+    this.selectedDoorId = doorId;
+    this.selectedWallId = null;
+    this.selectedRoomId = null;
+  }
+
+  deleteSelected() {
+    if (this.selectedDoorId) {
+      this.deleteSelectedDoor();
+      return;
+    }
+
+    if (this.selectedWindowId) {
+      this.deleteSelectedWindow();
+      return;
+    }
+
+    if (this.selectedWallId) {
+      this.deleteSelectedWall();
+      return;
+    }
+  }
+
+  deleteSelectedDoor() {
+    if (!this.selectedDoorId) {
+      return;
+    }
+
+    this.propertyService.removeDoor(this.selectedDoorId);
+
+    this.selectedDoorId = null;
+  }
+
+  deleteSelectedWindow() {
+    if (!this.selectedWindowId) {
+      return;
+    }
+
+    this.propertyService.removeWindow(this.selectedWindowId);
+
+    this.selectedWindowId = null;
+  }
+
+  startDraggingDoor(event: MouseEvent, doorId: string) {
+    event.stopPropagation();
+
+    if (this.activeTool !== 'select') {
+      return;
+    }
+
+    this.selectedDoorId = doorId;
+    this.selectedWallId = null;
+    this.selectedRoomId = null;
+
+    this.draggingDoorId = doorId;
+  }
+
+  startDraggingWindow(event: MouseEvent, windowId: string) {
+    event.stopPropagation();
+
+    if (this.activeTool !== 'select') {
+      return;
+    }
+
+    this.selectedWindowId = windowId;
+    this.selectedDoorId = null;
+    this.selectedWallId = null;
+    this.selectedRoomId = null;
+
+    this.draggingWindowId = windowId;
   }
 
   selectRoom(roomId: string, event: MouseEvent) {
@@ -72,6 +171,74 @@ export class Editor implements OnInit {
 
     this.selectedRoomId = roomId;
     this.selectedWallId = null;
+    this.selectedDoorId = null;
+  }
+
+  dragDoor(point: { x: number; y: number }) {
+    const door = this.propertyService.property.doors.find((d) => d.id === this.draggingDoorId);
+
+    if (!door) {
+      return;
+    }
+
+    const result = this.getClosestWall(point);
+
+    if (!result.wall) {
+      return;
+    }
+
+    // Only attach when reasonably close to a wall
+    const attachDistance = 40;
+
+    if (result.distance > attachDistance) {
+      this.snapTarget = null;
+      return;
+    }
+
+    // Attach door to this wall
+    door.wallId = result.wall.id;
+
+    // Position along wall
+    door.position = result.position;
+
+    // Show where we're snapping
+    this.snapTarget = {
+      x: result.wall.start.x + (result.wall.end.x - result.wall.start.x) * result.position,
+
+      y: result.wall.start.y + (result.wall.end.y - result.wall.start.y) * result.position,
+    };
+  }
+
+  dragWindow(point: { x: number; y: number }) {
+    const window = this.propertyService.property.windows.find(
+      (w) => w.id === this.draggingWindowId,
+    );
+
+    if (!window) {
+      return;
+    }
+
+    const result = this.getClosestWall(point);
+
+    if (!result.wall) {
+      return;
+    }
+
+    const attachDistance = 40;
+
+    if (result.distance > attachDistance) {
+      this.snapTarget = null;
+      return;
+    }
+
+    window.wallId = result.wall.id;
+    window.position = result.position;
+
+    this.snapTarget = {
+      x: result.wall.start.x + (result.wall.end.x - result.wall.start.x) * result.position,
+
+      y: result.wall.start.y + (result.wall.end.y - result.wall.start.y) * result.position,
+    };
   }
 
   getSelectedRoom() {
@@ -88,6 +255,47 @@ export class Editor implements OnInit {
     }
 
     room.name = input.value;
+  }
+
+  getClosestWall(point: { x: number; y: number }) {
+    let closestWall = null;
+    let closestDistance = Infinity;
+    let closestPosition = 0;
+
+    for (const wall of this.propertyService.property.walls) {
+      const dx = wall.end.x - wall.start.x;
+      const dy = wall.end.y - wall.start.y;
+
+      const lengthSquared = dx * dx + dy * dy;
+
+      if (lengthSquared === 0) {
+        continue;
+      }
+
+      let t = ((point.x - wall.start.x) * dx + (point.y - wall.start.y) * dy) / lengthSquared;
+
+      // Keep position between 0 and 1
+      t = Math.max(0, Math.min(1, t));
+
+      const closestPoint = {
+        x: wall.start.x + t * dx,
+        y: wall.start.y + t * dy,
+      };
+
+      const distance = Math.hypot(point.x - closestPoint.x, point.y - closestPoint.y);
+
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestWall = wall;
+        closestPosition = t;
+      }
+    }
+
+    return {
+      wall: closestWall,
+      position: closestPosition,
+      distance: closestDistance,
+    };
   }
 
   deleteSelectedWall() {
@@ -107,7 +315,15 @@ export class Editor implements OnInit {
     }
 
     if ((event.key === 'Delete' || event.key === 'Backspace') && this.activeTool === 'select') {
-      this.deleteSelectedWall();
+      if (this.selectedDoorId) {
+        this.deleteSelectedDoor();
+        return;
+      }
+
+      if (this.selectedWallId) {
+        this.deleteSelectedWall();
+        return;
+      }
     }
   }
 
@@ -132,6 +348,9 @@ export class Editor implements OnInit {
 
     this.draggingWallId = null;
     this.draggingEndpoint = null;
+    this.draggingDoorId = null;
+    this.draggingWindowId = null;
+    this.snapTarget = null;
   }
 
   onMouseMove(event: MouseEvent) {
@@ -152,6 +371,24 @@ export class Editor implements OnInit {
       x: svgPoint.x,
       y: svgPoint.y,
     };
+
+    // --------------------------------
+    // Dragging a door
+    // --------------------------------
+
+    if (this.draggingDoorId) {
+      this.dragDoor(rawPoint);
+      return;
+    }
+
+    // --------------------------------
+    // Dragging a door
+    // --------------------------------
+
+    if (this.draggingWindowId) {
+      this.dragWindow(rawPoint);
+      return;
+    }
 
     // --------------------------------
     // Drawing a new wall
@@ -302,11 +539,104 @@ export class Editor implements OnInit {
   }
 
   handleDoorClick(event: MouseEvent) {
-    console.log('Door tool clicked');
+    const point = this.getSvgPoint(event);
+
+    const result = this.getClosestWall(point);
+
+    if (!result.wall) {
+      return;
+    }
+
+    // Don't allow doors too close to the ends
+    if (result.position < 0.1 || result.position > 0.9) {
+      return;
+    }
+
+    const door = {
+      id: crypto.randomUUID(),
+
+      wallId: result.wall.id,
+
+      position: result.position,
+
+      width: 80,
+
+      swing: 'right' as const,
+
+      open: false,
+    };
+
+    this.propertyService.addDoor(door);
+
+    console.log('Door created:', door);
+  }
+
+  getDoorTransform(door: Door): string {
+    const wall = this.propertyService.property.walls.find((w) => w.id === door.wallId);
+
+    if (!wall) {
+      return '';
+    }
+
+    const x = wall.start.x + (wall.end.x - wall.start.x) * door.position;
+
+    const y = wall.start.y + (wall.end.y - wall.start.y) * door.position;
+
+    const angle =
+      (Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x) * 180) / Math.PI;
+
+    return `
+    translate(${x} ${y})
+    rotate(${angle})
+  `;
   }
 
   handleWindowClick(event: MouseEvent) {
-    console.log('Window tool clicked');
+    const point = this.getSvgPoint(event);
+
+    const result = this.getClosestWall(point);
+
+    if (!result.wall) {
+      return;
+    }
+
+    // Don't allow windows right at the corners
+    if (result.position < 0.1 || result.position > 0.9) {
+      return;
+    }
+
+    const window = {
+      id: crypto.randomUUID(),
+
+      wallId: result.wall.id,
+
+      position: result.position,
+
+      width: 100,
+
+      height: 48,
+    };
+
+    this.propertyService.addWindow(window);
+
+    console.log('Window created:', window);
+  }
+
+  getWindowTransform(window: Window): string {
+    const wall = this.propertyService.property.walls.find((w) => w.id === window.wallId);
+
+    if (!wall) {
+      return '';
+    }
+
+    const x = wall.start.x + (wall.end.x - wall.start.x) * window.position;
+
+    const y = wall.start.y + (wall.end.y - wall.start.y) * window.position;
+
+    const angle =
+      (Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x) * 180) / Math.PI;
+
+    return `translate(${x} ${y}) rotate(${angle})`;
   }
 
   handleSensorClick(event: MouseEvent) {
@@ -316,6 +646,8 @@ export class Editor implements OnInit {
   clearSelection() {
     this.selectedWallId = null;
     this.selectedRoomId = null;
+    this.selectedDoorId = null;
+    this.selectedWindowId = null;
   }
 
   snapPoint(

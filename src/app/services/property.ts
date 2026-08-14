@@ -2,6 +2,8 @@ import { Injectable, inject } from '@angular/core';
 import { Property } from '../models/property';
 import { RoomService } from './room';
 import { Wall } from '../models/wall';
+import { Door } from '../models/door';
+import { Window } from '../models/window';
 
 @Injectable({
   providedIn: 'root',
@@ -46,6 +48,8 @@ export class PropertyService {
       },
     ],
     rooms: [],
+    doors: [],
+    windows: [],
   };
   recalculateRooms() {
     this.property.rooms = this.roomService.findRooms(this.property.walls);
@@ -56,12 +60,36 @@ export class PropertyService {
     this.recalculateRooms();
   }
 
-  removeWall(id: string) {
-    this.property.walls = this.property.walls.filter((w) => w.id !== id);
+  addDoor(door: Door) {
+    this.property.doors.push(door);
+  }
+
+  removeDoor(doorId: string) {
+    this.property.doors = this.property.doors.filter((door) => door.id !== doorId);
+  }
+
+  removeWall(wallId: string) {
+    // Remove the wall
+    this.property.walls = this.property.walls.filter((wall) => wall.id !== wallId);
+
+    // Remove doors attached to that wall
+    this.property.doors = this.property.doors.filter((door) => door.wallId !== wallId);
+
+    // Remove windows attached to that wall
+    this.property.windows = this.property.windows.filter((window) => window.wallId !== wallId);
+
     this.recalculateRooms();
   }
 
   wallChanged() {
     this.recalculateRooms();
+  }
+
+  addWindow(window: Window) {
+    this.property.windows.push(window);
+  }
+
+  removeWindow(windowId: string) {
+    this.property.windows = this.property.windows.filter((window) => window.id !== windowId);
   }
 }
