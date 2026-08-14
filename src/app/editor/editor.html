@@ -1,10 +1,12 @@
 <div class="editor">
   <div class="toolbar">
-    <button (click)="startDrawingWall()">Wall</button>
+    <button [class.active]="activeTool === 'select'" (click)="setTool('select')">Select</button>
+    <button [class.active]="activeTool === 'wall'" (click)="setTool('wall')">Wall</button>
+    <button [class.active]="activeTool === 'room'" (click)="setTool('room')">Room</button>
+    <button [class.active]="activeTool === 'door'" (click)="setTool('door')">Door</button>
+    <button [class.active]="activeTool === 'window'" (click)="setTool('window')">Window</button>
+    <button [class.active]="activeTool === 'sensor'" (click)="setTool('sensor')">Sensor</button>
     <button [disabled]="!selectedWallId" (click)="deleteSelectedWall()">Delete</button>
-    <button>Door</button>
-    <button>Window</button>
-    <button>Sensor</button>
   </div>
 
   <div class="workspace">
@@ -21,7 +23,7 @@
     }
     <svg
       class="floor-plan"
-      [class.drawing]="drawingWall"
+      [class.drawing]="activeTool !== 'select'"
       viewBox="0 0 1000 700"
       preserveAspectRatio="xMidYMid meet"
       (click)="onSvgClick($event)"
@@ -46,7 +48,7 @@
           [attr.points]="getWallPoints(wall)"
           [attr.fill]="selectedWallId === wall.id ? '#2196f3' : '#333'"
           class="wall"
-          [attr.pointer-events]="drawingWall ? 'none' : 'auto'"
+          [attr.pointer-events]="activeTool === 'wall' ? 'none' : 'auto'"
           (click)="selectWall(wall.id, $event)"
         />
 
@@ -86,7 +88,7 @@
       }
 
       <!-- NEW WALL PREVIEW -->
-      @if (drawingWall && drawingStart && mousePosition) {
+      @if (activeTool === 'wall' && drawingStart && mousePosition) {
         <line
           [attr.x1]="drawingStart.x"
           [attr.y1]="drawingStart.y"

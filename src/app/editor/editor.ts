@@ -1,8 +1,9 @@
 import { Component, HostListener, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { PropertyService } from '../services/property';
-import { RoomService } from '../services/room';
 import { getWallPolygon } from '../utils/wall-geometry';
+
+type EditorTool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'sensor';
 
 @Component({
   selector: 'app-editor',
@@ -19,19 +20,30 @@ export class Editor implements OnInit {
   angleSnap = 45;
   snapTarget: { x: number; y: number } | null = null;
 
-  drawingWall = false;
+  activeTool: EditorTool = 'select';
   snapDistance = 20;
   shiftPressed = false;
   drawingStart: { x: number; y: number } | null = null;
   mousePosition: { x: number; y: number } | null = null;
 
-  constructor(
-    public propertyService: PropertyService,
-    public roomService: RoomService,
-  ) {}
+  constructor(public propertyService: PropertyService) {}
 
   ngOnInit() {
     this.propertyService.recalculateRooms();
+  }
+
+  setTool(tool: EditorTool) {
+    this.activeTool = tool;
+
+    // Cancel any unfinished wall
+    this.drawingStart = null;
+
+    // Stop dragging
+    this.draggingWallId = null;
+    this.draggingEndpoint = null;
+
+    // Clear snapping
+    this.snapTarget = null;
   }
 
   getWallPoints(wall: any): string {
@@ -43,17 +55,18 @@ export class Editor implements OnInit {
   selectWall(wallId: string, event?: MouseEvent) {
     event?.stopPropagation();
 
-    if (this.drawingWall) {
+    if (this.activeTool !== 'select') {
       return;
     }
 
     this.selectedWallId = wallId;
+    this.selectedRoomId = null;
   }
 
   selectRoom(roomId: string, event: MouseEvent) {
     event.stopPropagation();
 
-    if (this.drawingWall) {
+    if (this.activeTool !== 'select') {
       return;
     }
 
@@ -77,12 +90,6 @@ export class Editor implements OnInit {
     room.name = input.value;
   }
 
-  startDrawingWall() {
-    this.drawingWall = true;
-    this.drawingStart = null;
-    this.selectedWallId = null;
-  }
-
   deleteSelectedWall() {
     if (!this.selectedWallId) {
       return;
@@ -99,7 +106,7 @@ export class Editor implements OnInit {
       this.shiftPressed = true;
     }
 
-    if (event.key === 'Delete' || event.key === 'Backspace') {
+    if ((event.key === 'Delete' || event.key === 'Backspace') && this.activeTool === 'select') {
       this.deleteSelectedWall();
     }
   }
@@ -150,7 +157,7 @@ export class Editor implements OnInit {
     // Drawing a new wall
     // --------------------------------
 
-    if (this.drawingWall && this.drawingStart) {
+    if (this.activeTool === 'wall' && this.drawingStart) {
       const drawingPoint = this.getDrawingPoint(rawPoint);
 
       this.mousePosition = drawingPoint;
@@ -235,37 +242,43 @@ export class Editor implements OnInit {
   }
 
   onSvgClick(event: MouseEvent) {
-    if (!this.drawingWall) {
-      return;
+    switch (this.activeTool) {
+      case 'wall':
+        this.handleWallClick(event);
+        break;
+
+      case 'room':
+        this.handleRoomClick(event);
+        break;
+
+      case 'door':
+        this.handleDoorClick(event);
+        break;
+
+      case 'window':
+        this.handleWindowClick(event);
+        break;
+
+      case 'sensor':
+        this.handleSensorClick(event);
+        break;
+
+      case 'select':
+        this.clearSelection();
+        break;
     }
+  }
 
-    const svg = event.currentTarget as SVGSVGElement;
-
-    const point = svg.createSVGPoint();
-
-    point.x = event.clientX;
-    point.y = event.clientY;
-
-    const matrix = svg.getScreenCTM()?.inverse();
-    if (!matrix) return;
-
-    const svgPoint = point.matrixTransform(matrix);
+  handleWallClick(event: MouseEvent) {
+    const point = this.getSvgPoint(event);
 
     if (!this.drawingStart) {
-      const snappedStart = this.snapPoint({
-        x: svgPoint.x,
-        y: svgPoint.y,
-      });
-
-      this.drawingStart = snappedStart;
+      this.drawingStart = this.snapPoint(point);
 
       return;
     }
 
-    const finalPoint = this.getDrawingPoint({
-      x: svgPoint.x,
-      y: svgPoint.y,
-    });
+    const finalPoint = this.getDrawingPoint(point);
 
     const newWall = {
       id: crypto.randomUUID(),
@@ -281,13 +294,28 @@ export class Editor implements OnInit {
 
     this.propertyService.addWall(newWall);
 
-    this.selectedWallId = newWall.id;
-
     this.drawingStart = null;
+  }
 
-    this.drawingWall = false;
+  handleRoomClick(event: MouseEvent) {
+    console.log('Room tool clicked');
+  }
 
-    this.updateRooms();
+  handleDoorClick(event: MouseEvent) {
+    console.log('Door tool clicked');
+  }
+
+  handleWindowClick(event: MouseEvent) {
+    console.log('Window tool clicked');
+  }
+
+  handleSensorClick(event: MouseEvent) {
+    console.log('Sensor tool clicked');
+  }
+
+  clearSelection() {
+    this.selectedWallId = null;
+    this.selectedRoomId = null;
   }
 
   snapPoint(
@@ -362,11 +390,5 @@ export class Editor implements OnInit {
     finalPoint = this.snapPoint(finalPoint);
 
     return finalPoint;
-  }
-
-  updateRooms() {
-    this.propertyService.property.rooms = this.roomService.findRooms(
-      this.propertyService.property.walls,
-    );
   }
 }
