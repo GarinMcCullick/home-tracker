@@ -1,0 +1,103 @@
+<div class="editor">
+  <div class="toolbar">
+    <button (click)="startDrawingWall()">Wall</button>
+    <button [disabled]="!selectedWallId" (click)="deleteSelectedWall()">Delete</button>
+    <button>Door</button>
+    <button>Window</button>
+    <button>Sensor</button>
+  </div>
+
+  <div class="workspace">
+    <div>Walls: {{ propertyService.property.walls.length }}</div>
+    @if (selectedRoomId) {
+      <div class="room-properties">
+        <input [value]="getSelectedRoom()?.name ?? ''" (input)="renameSelectedRoom($event)" />
+
+        <div>
+          Area:
+          {{ getSelectedRoom()?.area | number: '1.0-0' }}
+        </div>
+      </div>
+    }
+    <svg
+      class="floor-plan"
+      [class.drawing]="drawingWall"
+      viewBox="0 0 1000 700"
+      preserveAspectRatio="xMidYMid meet"
+      (click)="onSvgClick($event)"
+      (mousemove)="onMouseMove($event)"
+      (mouseup)="stopDragging()"
+      (mouseleave)="stopDragging()"
+    >
+      <!-- ROOMS -->
+      @for (room of propertyService.property.rooms; track room.id) {
+        <polygon
+          [attr.points]="room.polygon.map((p) => p.x + ',' + p.y).join(' ')"
+          [attr.fill]="selectedRoomId === room.id ? '#bfdbfe' : '#dbeafe'"
+          class="room"
+          pointer-events="all"
+          (click)="selectRoom(room.id, $event)"
+        />
+      }
+
+      <!-- WALLS -->
+      @for (wall of propertyService.property.walls; track wall.id) {
+        <polygon
+          [attr.points]="getWallPoints(wall)"
+          [attr.fill]="selectedWallId === wall.id ? '#2196f3' : '#333'"
+          class="wall"
+          [attr.pointer-events]="drawingWall ? 'none' : 'auto'"
+          (click)="selectWall(wall.id, $event)"
+        />
+
+        <!-- WALL ENDPOINTS -->
+        @if (selectedWallId === wall.id) {
+          <circle
+            [attr.cx]="wall.start.x"
+            [attr.cy]="wall.start.y"
+            r="10"
+            fill="#2196f3"
+            class="wall-handle"
+            (mousedown)="startDragging($event, wall.id, 'start')"
+          />
+
+          <circle
+            [attr.cx]="wall.end.x"
+            [attr.cy]="wall.end.y"
+            r="10"
+            fill="#2196f3"
+            class="wall-handle"
+            (mousedown)="startDragging($event, wall.id, 'end')"
+          />
+        }
+      }
+
+      <!-- SNAP INDICATOR -->
+      @if (snapTarget) {
+        <circle
+          [attr.cx]="snapTarget.x"
+          [attr.cy]="snapTarget.y"
+          r="14"
+          fill="none"
+          stroke="#2196f3"
+          stroke-width="3"
+          pointer-events="none"
+        />
+      }
+
+      <!-- NEW WALL PREVIEW -->
+      @if (drawingWall && drawingStart && mousePosition) {
+        <line
+          [attr.x1]="drawingStart.x"
+          [attr.y1]="drawingStart.y"
+          [attr.x2]="mousePosition.x"
+          [attr.y2]="mousePosition.y"
+          stroke="#2196f3"
+          stroke-width="4"
+          stroke-dasharray="10 5"
+          pointer-events="none"
+        />
+      }
+    </svg>
+  </div>
+</div>
