@@ -1,0 +1,15 @@
+<div class="toolbar">
+  <button [class.active]="activeTool === 'select'" (click)="setTool('select')">Select</button>
+
+  <button [class.active]="activeTool === 'wall'" (click)="setTool('wall')">Wall</button>
+
+  <button [class.active]="activeTool === 'room'" (click)="setTool('room')">Room</button>
+
+  <button [class.active]="activeTool === 'door'" (click)="setTool('door')">Door</button>
+
+  <button [class.active]="activeTool === 'window'" (click)="setTool('window')">Window</button>
+
+  <button [class.active]="activeTool === 'sensor'" (click)="setTool('sensor')">Sensor</button>
+
+  <button [disabled]="!canDelete" (click)="delete()">Delete</button>
+</div>

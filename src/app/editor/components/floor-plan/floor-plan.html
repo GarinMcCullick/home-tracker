@@ -1,0 +1,156 @@
+<svg
+  class="floor-plan"
+  [class.drawing]="activeTool !== 'select'"
+  viewBox="0 0 1000 700"
+  preserveAspectRatio="xMidYMid meet"
+  (click)="handleCanvasClick($event)"
+  (mousemove)="onMouseMove($event)"
+  (mouseup)="stopDragging()"
+  (mouseleave)="stopDragging()"
+>
+  <!-- GRID -->
+
+  <defs>
+    <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+      <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#ddd" stroke-width="1" />
+    </pattern>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="700" fill="url(#grid)" />
+
+  <!-- ROOMS -->
+
+  <ng-container *ngFor="let room of rooms">
+    <polygon
+      [attr.points]="room.polygon.map((point) => point.x + ',' + point.y).join(' ')"
+      fill="rgba(59, 130, 246, 0.08)"
+      stroke="#94a3b8"
+      stroke-width="2"
+      pointer-events="none"
+    />
+  </ng-container>
+
+  <!-- WALLS -->
+
+  <ng-container *ngFor="let wall of walls">
+    <polygon
+      [attr.points]="getWallPoints(wall)"
+      [attr.fill]="selectedWallId === wall.id ? '#3b82f6' : '#333'"
+      [attr.stroke]="selectedWallId === wall.id ? '#2563eb' : '#111'"
+      stroke-width="2"
+      (click)="selectWall(wall.id, $event)"
+    />
+
+    <!-- START HANDLE -->
+
+    <circle
+      *ngIf="selectedWallId === wall.id"
+      [attr.cx]="wall.start.x"
+      [attr.cy]="wall.start.y"
+      r="7"
+      fill="white"
+      stroke="#333"
+      stroke-width="2"
+      (mousedown)="startDragging($event, wall.id, 'start')"
+    />
+
+    <!-- END HANDLE -->
+
+    <circle
+      *ngIf="selectedWallId === wall.id"
+      [attr.cx]="wall.end.x"
+      [attr.cy]="wall.end.y"
+      r="7"
+      fill="white"
+      stroke="#333"
+      stroke-width="2"
+      (mousedown)="startDragging($event, wall.id, 'end')"
+    />
+  </ng-container>
+
+  <!-- DOORS -->
+
+  <ng-container *ngFor="let door of doors">
+    <ng-container *ngIf="getDoorPosition(door) as position">
+      <g
+        [attr.transform]="
+          'translate(' +
+          position.x +
+          ' ' +
+          position.y +
+          ') rotate(' +
+          getWallAngle(getWall(door.wallId)!) +
+          ')'
+        "
+      >
+        <rect
+          x="-20"
+          y="-6"
+          [attr.width]="door.width"
+          height="12"
+          fill="white"
+          stroke="#7c3aed"
+          stroke-width="3"
+        />
+      </g>
+    </ng-container>
+  </ng-container>
+
+  <!-- WINDOWS -->
+
+  <ng-container *ngFor="let window of windows">
+    <ng-container *ngIf="getWindowPosition(window) as position">
+      <g
+        [attr.transform]="
+          'translate(' +
+          position.x +
+          ' ' +
+          position.y +
+          ') rotate(' +
+          getWallAngle(getWall(window.wallId)!) +
+          ')'
+        "
+      >
+        <rect
+          x="-20"
+          y="-4"
+          [attr.width]="window.width"
+          height="8"
+          fill="#67e8f9"
+          stroke="#0891b2"
+          stroke-width="2"
+        />
+      </g>
+    </ng-container>
+  </ng-container>
+
+  <!-- WALL DRAWING PREVIEW -->
+
+  <ng-container *ngIf="activeTool === 'wall' && drawingStart && mousePosition">
+    <line
+      [attr.x1]="drawingStart.x"
+      [attr.y1]="drawingStart.y"
+      [attr.x2]="mousePosition.x"
+      [attr.y2]="mousePosition.y"
+      stroke="#3b82f6"
+      stroke-width="8"
+      stroke-dasharray="10 8"
+    />
+
+    <circle [attr.cx]="drawingStart.x" [attr.cy]="drawingStart.y" r="6" fill="#3b82f6" />
+
+    <circle [attr.cx]="mousePosition.x" [attr.cy]="mousePosition.y" r="6" fill="#3b82f6" />
+  </ng-container>
+
+  <!-- SNAP INDICATOR -->
+
+  <circle
+    *ngIf="snapTarget"
+    [attr.cx]="snapTarget.x"
+    [attr.cy]="snapTarget.y"
+    r="10"
+    fill="none"
+    stroke="#22c55e"
+    stroke-width="3"
+  />
+</svg>

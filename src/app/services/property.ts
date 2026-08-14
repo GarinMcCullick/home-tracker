@@ -11,6 +11,10 @@ import { Window } from '../models/window';
 export class PropertyService {
   private roomService = inject(RoomService);
 
+  constructor() {
+    this.recalculateRooms();
+  }
+
   property: Property = {
     id: 'home-1',
     name: 'Springfield House',

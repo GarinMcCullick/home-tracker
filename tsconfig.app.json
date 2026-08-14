@@ -6,10 +6,6 @@
     "outDir": "./out-tsc/app",
     "types": []
   },
-  "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "src/**/*.spec.ts"
-  ]
+  "include": ["src/**/*.ts", "src/app/editor/components/editor-toolbar"],
+  "exclude": ["src/**/*.spec.ts"]
 }
