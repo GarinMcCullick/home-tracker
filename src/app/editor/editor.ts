@@ -8,7 +8,21 @@ import { Window } from '../models/window';
 import { Wall } from '../models/wall';
 
 import { getWallPolygon } from '../utils/wall-geometry';
-import { getClosestWall, snapAngle, snapPoint, getWallSide } from '../utils/editor-geometry';
+import {
+  getClosestWall,
+  snapAngle,
+  snapPoint,
+  getWallSide,
+  getDrawingPoint,
+} from '../utils/editor-geometry';
+import {
+  getDoorTransform,
+  getWindowTransform,
+  getPlacementTransform as buildPlacementTransform,
+} from '../utils/element-transforms';
+import { PlacementPreview, getPlacementPreview } from '../utils/placement-utils';
+import { calculateZoom, getSvgPoint } from '../utils/viewport';
+import { getCursorClass } from '../utils/editor-utils';
 
 type EditorTool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'sensor';
 
@@ -46,8 +60,89 @@ export class Editor implements OnInit {
   placingSide: 1 | -1 = 1;
 
   // --------------------------------------------------
+  // Viewport stuff
+  // --------------------------------------------------
+  onWheel(event: WheelEvent) {
+    event.preventDefault();
+
+    const result = calculateZoom(
+      event,
+      event.currentTarget as SVGSVGElement,
+      this.zoom,
+      this.panX,
+      this.panY,
+    );
+
+    this.zoom = result.zoom;
+    this.panX = result.panX;
+    this.panY = result.panY;
+  }
+  onCanvasMouseDown(event: MouseEvent) {
+    // Middle mouse = always pan
+    if (event.button === 1) {
+      this.startPanning(event);
+      return;
+    }
+
+    // Space + left mouse = pan
+    if (event.button === 0 && this.spacePressed) {
+      this.startPanning(event);
+      return;
+    }
+
+    // Select tool + left mouse on empty canvas = pan
+    if (
+      event.button === 0 &&
+      this.activeTool === 'select' &&
+      event.target === event.currentTarget
+    ) {
+      this.startPanning(event);
+    }
+  }
+  onCanvasMouseUp(event: MouseEvent) {
+    if (this.isPanning) {
+      this.isPanning = false;
+      return;
+    }
+
+    this.stopDragging();
+  }
+
+  private startPanning(event: MouseEvent) {
+    event.preventDefault();
+
+    this.isPanning = true;
+
+    this.panStart = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+
+    this.panOrigin = {
+      x: this.panX,
+      y: this.panY,
+    };
+  }
+
+  spacePressed = false;
+  // --------------------------------------------------
   // Editor state
   // --------------------------------------------------
+  zoom = 1;
+  panX = 0;
+  panY = 0;
+
+  isPanning = false;
+
+  private panStart = {
+    x: 0,
+    y: 0,
+  };
+
+  private panOrigin = {
+    x: 0,
+    y: 0,
+  };
 
   activeTool: EditorTool = 'select';
 
@@ -87,26 +182,7 @@ export class Editor implements OnInit {
   }
 
   getCursorClass(): string {
-    switch (this.activeTool) {
-      case 'wall':
-        return 'cursor-wall';
-
-      case 'door':
-        return 'cursor-door';
-
-      case 'window':
-        return 'cursor-window';
-
-      case 'room':
-        return 'cursor-room';
-
-      case 'sensor':
-        return 'cursor-sensor';
-
-      case 'select':
-      default:
-        return 'cursor-select';
-    }
+    return getCursorClass(this.activeTool);
   }
 
   getSelectedType(): 'wall' | 'door' | 'window' | 'room' | null {
@@ -427,6 +503,28 @@ export class Editor implements OnInit {
 
   onMouseMove(event: MouseEvent) {
     const point = this.getSvgPoint(event);
+    const drawingPoint = getDrawingPoint(
+      this.drawingStart ?? point,
+      point,
+      this.propertyService.property.walls,
+      this.shiftPressed,
+      this.angleSnap,
+      this.snapDistance,
+    );
+
+    // --------------------------------
+    // viewport panning
+    // --------------------------------
+
+    if (this.isPanning) {
+      const dx = event.clientX - this.panStart.x;
+      const dy = event.clientY - this.panStart.y;
+
+      this.panX = this.panOrigin.x + dx;
+      this.panY = this.panOrigin.y + dy;
+
+      return;
+    }
 
     // --------------------------------
     // Door / Window placement preview
@@ -461,8 +559,6 @@ export class Editor implements OnInit {
     // --------------------------------
 
     if (this.activeTool === 'wall' && this.drawingStart) {
-      const drawingPoint = this.getDrawingPoint(point);
-
       this.mousePosition = drawingPoint;
 
       if (drawingPoint.x !== point.x || drawingPoint.y !== point.y) {
@@ -493,36 +589,28 @@ export class Editor implements OnInit {
   }
 
   getSvgPoint(event: MouseEvent): Point {
-    const svg = event.currentTarget as SVGSVGElement;
-
-    const point = svg.createSVGPoint();
-
-    point.x = event.clientX;
-    point.y = event.clientY;
-
-    const matrix = svg.getScreenCTM();
-
-    if (!matrix) {
-      return { x: 0, y: 0 };
-    }
-
-    const svgPoint = point.matrixTransform(matrix.inverse());
-
-    return {
-      x: svgPoint.x,
-      y: svgPoint.y,
-    };
+    return getSvgPoint(
+      event,
+      event.currentTarget as SVGSVGElement,
+      this.panX,
+      this.panY,
+      this.zoom,
+    );
   }
 
   // --------------------------------------------------
   // Placement preview
   // --------------------------------------------------
 
-  placementPreview: {
-    wallId: string;
-    position: number;
-    side: 1 | -1;
-  } | null = null;
+  placementPreview: PlacementPreview | null = null;
+
+  getPlacementTransform(): string {
+    if (!this.placementPreview) {
+      return '';
+    }
+
+    return buildPlacementTransform(this.placementPreview, this.propertyService.property.walls);
+  }
 
   updatePlacementPreview(point: Point) {
     if (this.activeTool !== 'door' && this.activeTool !== 'window') {
@@ -530,59 +618,7 @@ export class Editor implements OnInit {
       return;
     }
 
-    const result = getClosestWall(this.propertyService.property.walls, point);
-
-    if (!result.wall) {
-      this.placementPreview = null;
-      return;
-    }
-
-    const attachDistance = 40;
-
-    if (result.distance > attachDistance) {
-      this.placementPreview = null;
-      return;
-    }
-
-    if (result.position < 0.1 || result.position > 0.9) {
-      this.placementPreview = null;
-      return;
-    }
-
-    this.placementPreview = {
-      wallId: result.wall.id,
-      position: result.position,
-      side: getWallSide(result.wall, point),
-    };
-  }
-
-  getPlacementTransform(): string {
-    if (!this.placementPreview) {
-      return '';
-    }
-
-    const wall = this.propertyService.property.walls.find(
-      (wall) => wall.id === this.placementPreview!.wallId,
-    );
-
-    if (!wall) {
-      return '';
-    }
-
-    const x = wall.start.x + (wall.end.x - wall.start.x) * this.placementPreview.position;
-
-    const y = wall.start.y + (wall.end.y - wall.start.y) * this.placementPreview.position;
-
-    const angle =
-      (Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x) * 180) / Math.PI;
-
-    const flip = this.placementPreview.side === -1 ? 'scale(1 -1)' : '';
-
-    return `
-    translate(${x} ${y})
-    rotate(${angle})
-    ${flip}
-  `;
+    this.placementPreview = getPlacementPreview(this.propertyService.property.walls, point);
   }
 
   // ==================================================
@@ -630,7 +666,14 @@ export class Editor implements OnInit {
       return;
     }
 
-    const finalPoint = this.getDrawingPoint(point);
+    const finalPoint = getDrawingPoint(
+      this.drawingStart,
+      point,
+      this.propertyService.property.walls,
+      this.shiftPressed,
+      this.angleSnap,
+      this.snapDistance,
+    );
 
     const newWall: Wall = {
       id: crypto.randomUUID(),
@@ -646,23 +689,13 @@ export class Editor implements OnInit {
     this.snapTarget = null;
   }
 
-  getDrawingPoint(point: Point): Point {
-    if (!this.drawingStart) {
-      return point;
-    }
-
-    let finalPoint = point;
-
-    if (this.shiftPressed) {
-      finalPoint = snapAngle(this.drawingStart, finalPoint, this.angleSnap);
-    }
-
-    return snapPoint(this.propertyService.property.walls, finalPoint, this.snapDistance);
-  }
-
   // ==================================================
   // DOOR CREATION
   // ==================================================
+
+  getDoorTransform(door: Door): string {
+    return getDoorTransform(door, this.propertyService.property.walls);
+  }
 
   handleDoorClick(event: MouseEvent) {
     const point = this.getSvgPoint(event);
@@ -692,32 +725,13 @@ export class Editor implements OnInit {
     this.propertyService.addDoor(door);
   }
 
-  getDoorTransform(door: Door): string {
-    const wall = this.propertyService.property.walls.find((wall) => wall.id === door.wallId);
-
-    if (!wall) {
-      return '';
-    }
-
-    const x = wall.start.x + (wall.end.x - wall.start.x) * door.position;
-
-    const y = wall.start.y + (wall.end.y - wall.start.y) * door.position;
-
-    const angle =
-      (Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x) * 180) / Math.PI;
-
-    const flip = door.side === -1 ? 'scale(1 -1)' : '';
-
-    return `
-    translate(${x} ${y})
-    rotate(${angle})
-    ${flip}
-  `;
-  }
-
   // ==================================================
   // WINDOW CREATION
   // ==================================================
+
+  getWindowTransform(window: Window): string {
+    return getWindowTransform(window, this.propertyService.property.walls);
+  }
 
   handleWindowClick(event: MouseEvent) {
     const point = this.getSvgPoint(event);
@@ -744,29 +758,6 @@ export class Editor implements OnInit {
     };
 
     this.propertyService.addWindow(window);
-  }
-
-  getWindowTransform(window: Window): string {
-    const wall = this.propertyService.property.walls.find((wall) => wall.id === window.wallId);
-
-    if (!wall) {
-      return '';
-    }
-
-    const x = wall.start.x + (wall.end.x - wall.start.x) * window.position;
-
-    const y = wall.start.y + (wall.end.y - wall.start.y) * window.position;
-
-    const angle =
-      (Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x) * 180) / Math.PI;
-
-    const flip = window.side === -1 ? 'scale(1 -1)' : '';
-
-    return `
-    translate(${x} ${y})
-    rotate(${angle})
-    ${flip}
-  `;
   }
 
   // ==================================================
@@ -812,6 +803,9 @@ export class Editor implements OnInit {
     if (event.key === 'Shift') {
       this.shiftPressed = true;
     }
+    if (event.code === 'Space') {
+      this.spacePressed = true;
+    }
 
     if ((event.key === 'Delete' || event.key === 'Backspace') && this.activeTool === 'select') {
       this.deleteSelected();
@@ -822,6 +816,9 @@ export class Editor implements OnInit {
   handleKeyboardUp(event: KeyboardEvent) {
     if (event.key === 'Shift') {
       this.shiftPressed = false;
+    }
+    if (event.code === 'Space') {
+      this.spacePressed = false;
     }
   }
 }

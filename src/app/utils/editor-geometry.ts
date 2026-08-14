@@ -7,6 +7,10 @@ export interface ClosestWallResult {
   distance: number;
 }
 
+// ==================================================
+// WALL PROXIMITY
+// ==================================================
+
 export function getClosestWall(walls: Wall[], point: Point): ClosestWallResult {
   let closestWall: Wall | null = null;
   let closestDistance = Infinity;
@@ -47,6 +51,10 @@ export function getClosestWall(walls: Wall[], point: Point): ClosestWallResult {
   };
 }
 
+// ==================================================
+// SNAPPING
+// ==================================================
+
 export function snapPoint(
   walls: Wall[],
   point: Point,
@@ -73,18 +81,6 @@ export function snapPoint(
   return point;
 }
 
-export function getWallSide(wall: Wall, point: Point): 1 | -1 {
-  const wallX = wall.end.x - wall.start.x;
-  const wallY = wall.end.y - wall.start.y;
-
-  const pointX = point.x - wall.start.x;
-  const pointY = point.y - wall.start.y;
-
-  const cross = wallX * pointY - wallY * pointX;
-
-  return cross >= 0 ? 1 : -1;
-}
-
 export function snapAngle(start: Point, end: Point, angleSnap: number): Point {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -96,12 +92,81 @@ export function snapAngle(start: Point, end: Point, angleSnap: number): Point {
   }
 
   const angle = Math.atan2(dy, dx);
+
   const snapIncrement = (angleSnap * Math.PI) / 180;
 
   const snappedAngle = Math.round(angle / snapIncrement) * snapIncrement;
 
   return {
     x: start.x + Math.cos(snappedAngle) * distance,
+
     y: start.y + Math.sin(snappedAngle) * distance,
   };
+}
+
+// ==================================================
+// WALL SIDE
+// ==================================================
+
+export function getWallSide(wall: Wall, point: Point): 1 | -1 {
+  const wallX = wall.end.x - wall.start.x;
+
+  const wallY = wall.end.y - wall.start.y;
+
+  const pointX = point.x - wall.start.x;
+
+  const pointY = point.y - wall.start.y;
+
+  const cross = wallX * pointY - wallY * pointX;
+
+  return cross >= 0 ? 1 : -1;
+}
+
+// ==================================================
+// WALL POINT
+// ==================================================
+
+export function getPointOnWall(wall: Wall, position: number): Point {
+  return {
+    x: wall.start.x + (wall.end.x - wall.start.x) * position,
+
+    y: wall.start.y + (wall.end.y - wall.start.y) * position,
+  };
+}
+
+// ==================================================
+// WALL ANGLE
+// ==================================================
+
+export function getWallAngle(wall: Wall): number {
+  return (Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x) * 180) / Math.PI;
+}
+
+// ==================================================
+// WALL LENGTH
+// ==================================================
+
+export function getWallLength(wall: Wall): number {
+  return Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
+}
+
+// ==================================================
+// Drawing
+// ==================================================
+
+export function getDrawingPoint(
+  start: Point,
+  point: Point,
+  walls: Wall[],
+  shiftPressed: boolean,
+  angleSnap: number,
+  snapDistance: number,
+): Point {
+  let finalPoint = point;
+
+  if (shiftPressed) {
+    finalPoint = snapAngle(start, finalPoint, angleSnap);
+  }
+
+  return snapPoint(walls, finalPoint, snapDistance);
 }
