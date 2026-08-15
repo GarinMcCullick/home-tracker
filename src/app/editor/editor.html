@@ -44,6 +44,7 @@
         </div>
       </div>
     }
+
     <svg
       class="floor-plan"
       viewBox="0 0 1200 800"
@@ -302,5 +303,50 @@
         }
       </g>
     </svg>
+    @if (editorStateService.selectedWallId && getSelectedWall(); as wall) {
+      @if (wallDimensionPosition; as position) {
+        <div
+          class="wall-dimension-editor"
+          [style.left.px]="position.x"
+          [style.top.px]="position.y + 20"
+          (click)="$event.stopPropagation()"
+          (mousedown)="$event.stopPropagation()"
+        >
+          <div class="wall-dimension-ui">
+            <input
+              class="wall-length-input"
+              [(ngModel)]="wallLengthInput"
+              (focus)="onWallDimensionFocus()"
+              (blur)="onWallDimensionBlur()"
+              (keydown.enter)="applyWallLength(wallLengthInput, 'end')"
+            />
+          </div>
+
+          @if (wallDimensionFocused) {
+            <div class="wall-apply-buttons">
+              <button
+                type="button"
+                (mousedown)="$event.preventDefault()"
+                (click)="applyWallLength(wallLengthInput, 'start')"
+              >
+                Apply Left
+              </button>
+
+              <button
+                type="button"
+                (mousedown)="$event.preventDefault()"
+                (click)="applyWallLength(wallLengthInput, 'end')"
+              >
+                Apply Right
+              </button>
+            </div>
+          }
+
+          <div class="wall-delete-menu">
+            <button type="button" (click)="deleteSelectedWall()">🗑 Delete Wall</button>
+          </div>
+        </div>
+      }
+    }
   </div>
 </div>

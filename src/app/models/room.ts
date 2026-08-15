@@ -3,6 +3,7 @@ export interface Room {
   name: string;
   polygon: Point[];
   area: number;
+  wallIds: string[];
 }
 
 export interface Point {

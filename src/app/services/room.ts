@@ -11,13 +11,18 @@ interface DirectedEdge {
   angle: number;
 }
 
+interface DetectedFace {
+  polygon: Point[];
+  wallIds: string[];
+}
+
 @Injectable({
   providedIn: 'root',
 })
 export class RoomService {
   private readonly tolerance = 0.5;
 
-  findRooms(walls: Wall[]): Room[] {
+  findRooms(walls: Wall[], existingRooms: Room[] = []): Room[] {
     if (walls.length < 3) {
       return [];
     }
@@ -43,7 +48,7 @@ export class RoomService {
     }
 
     const visited = new Set<string>();
-    const faces: Point[][] = [];
+    const faces: DetectedFace[] = [];
 
     // Every directed edge can be the beginning of a face
     for (const edge of edges) {
@@ -53,11 +58,11 @@ export class RoomService {
 
       const face = this.traceFace(edge, outgoing, visited);
 
-      if (!face || face.length < 3) {
+      if (!face || face.polygon.length < 3) {
         continue;
       }
 
-      const signedArea = this.calculateSignedArea(face);
+      const signedArea = this.calculateSignedArea(face.polygon);
 
       /*
        * Positive area means the face is traversed
@@ -71,16 +76,112 @@ export class RoomService {
       }
     }
 
-    return faces.map((polygon, index) => {
-      const area = Math.abs(this.calculateSignedArea(polygon));
+    /*
+     * Match each detected face to an existing room
+     * based on the walls that make up its boundary.
+     */
+    const usedRoomIds = new Set<string>();
+
+    return faces.map((face) => {
+      const area = Math.abs(this.calculateSignedArea(face.polygon));
+
+      const existingRoom = this.findMatchingRoom(face.wallIds, existingRooms, usedRoomIds);
+
+      if (existingRoom) {
+        usedRoomIds.add(existingRoom.id);
+
+        return {
+          id: existingRoom.id,
+          name: existingRoom.name,
+          polygon: face.polygon,
+          area,
+          wallIds: face.wallIds,
+        };
+      }
 
       return {
-        id: this.getRoomId(polygon),
-        name: `Room ${index + 1}`,
-        polygon,
+        id: crypto.randomUUID(),
+        name: this.getNextRoomName(existingRooms),
+        polygon: face.polygon,
         area,
+        wallIds: face.wallIds,
       };
     });
+  }
+
+  // ==================================================
+  // ROOM MATCHING
+  // ==================================================
+
+  private findMatchingRoom(
+    wallIds: string[],
+    existingRooms: Room[],
+    usedRoomIds: Set<string>,
+  ): Room | undefined {
+    let bestMatch: Room | undefined;
+    let bestScore = 0;
+
+    const currentWalls = new Set(wallIds);
+
+    for (const room of existingRooms) {
+      // Never let one existing room match multiple faces
+      if (usedRoomIds.has(room.id)) {
+        continue;
+      }
+
+      const existingWalls = new Set(room.wallIds);
+
+      let sharedWalls = 0;
+
+      for (const wallId of currentWalls) {
+        if (existingWalls.has(wallId)) {
+          sharedWalls++;
+        }
+      }
+
+      /*
+       * Score is the percentage of the current room's
+       * walls that are shared with the existing room.
+       */
+      const score = sharedWalls / Math.max(currentWalls.size, existingWalls.size);
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = room;
+      }
+    }
+
+    /*
+     * Require at least one shared wall.
+     *
+     * This prevents completely unrelated rooms from
+     * stealing an existing room's ID.
+     */
+    return bestScore > 0 ? bestMatch : undefined;
+  }
+
+  // ==================================================
+  // ROOM NAMING
+  // ==================================================
+
+  private getNextRoomName(existingRooms: Room[]): string {
+    const usedNumbers = new Set<number>();
+
+    for (const room of existingRooms) {
+      const match = room.name.match(/^Room (\d+)$/);
+
+      if (match) {
+        usedNumbers.add(Number(match[1]));
+      }
+    }
+
+    let number = 1;
+
+    while (usedNumbers.has(number)) {
+      number++;
+    }
+
+    return `Room ${number}`;
   }
 
   // ==================================================
@@ -119,8 +220,9 @@ export class RoomService {
     startEdge: DirectedEdge,
     outgoing: Map<string, DirectedEdge[]>,
     visited: Set<string>,
-  ): Point[] | null {
+  ): DetectedFace | null {
     const points: Point[] = [];
+    const wallIds: string[] = [];
 
     let current = startEdge;
 
@@ -135,6 +237,7 @@ export class RoomService {
       visited.add(current.id);
 
       points.push(current.start);
+      wallIds.push(current.wallId);
 
       const next = this.getNextEdge(current, outgoing);
 
@@ -144,9 +247,12 @@ export class RoomService {
 
       current = next;
 
-      // We returned to the starting directed edge.
+      // We returned to the starting directed edge
       if (current.id === startEdge.id) {
-        return points;
+        return {
+          polygon: points,
+          wallIds,
+        };
       }
 
       // Safety protection
@@ -207,14 +313,6 @@ export class RoomService {
 
   pointsEqual(a: Point, b: Point): boolean {
     return Math.abs(a.x - b.x) < this.tolerance && Math.abs(a.y - b.y) < this.tolerance;
-  }
-
-  // ==================================================
-  // ROOM ID
-  // ==================================================
-
-  getRoomId(points: Point[]): string {
-    return points.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).join('|');
   }
 
   // ==================================================
