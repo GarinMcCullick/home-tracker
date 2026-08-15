@@ -2,10 +2,13 @@ import { Component, HostListener, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 import { PropertyService } from '../services/property';
+import { EditorStateService, EditorTool, Point } from '../services/editor-state';
 
 import { Door } from '../models/door';
 import { Window } from '../models/window';
 import { Wall } from '../models/wall';
+import { Room } from '../models/room';
+import { isPointInsidePolygon } from '../utils/room-geometry';
 
 import { getWallPolygon } from '../utils/wall-geometry';
 import {
@@ -24,13 +27,6 @@ import { PlacementPreview, getPlacementPreview } from '../utils/placement-utils'
 import { calculateZoom, getSvgPoint } from '../utils/viewport';
 import { getCursorClass } from '../utils/editor-utils';
 
-type EditorTool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'sensor';
-
-type Point = {
-  x: number;
-  y: number;
-};
-
 @Component({
   selector: 'app-editor',
   standalone: true,
@@ -40,23 +36,9 @@ type Point = {
 })
 export class Editor implements OnInit {
   // --------------------------------------------------
-  // Selection
-  // --------------------------------------------------
-
-  selectedWallId: string | null = null;
-  selectedRoomId: string | null = null;
-  selectedDoorId: string | null = null;
-  selectedWindowId: string | null = null;
-
-  // --------------------------------------------------
   // Dragging
   // --------------------------------------------------
 
-  draggingWallId: string | null = null;
-  draggingEndpoint: 'start' | 'end' | null = null;
-
-  draggingDoorId: string | null = null;
-  draggingWindowId: string | null = null;
   placingSide: 1 | -1 = 1;
 
   // --------------------------------------------------
@@ -68,14 +50,14 @@ export class Editor implements OnInit {
     const result = calculateZoom(
       event,
       event.currentTarget as SVGSVGElement,
-      this.zoom,
-      this.panX,
-      this.panY,
+      this.editorStateService.zoom,
+      this.editorStateService.panX,
+      this.editorStateService.panY,
     );
 
-    this.zoom = result.zoom;
-    this.panX = result.panX;
-    this.panY = result.panY;
+    this.editorStateService.zoom = result.zoom;
+    this.editorStateService.panX = result.panX;
+    this.editorStateService.panY = result.panY;
   }
   onCanvasMouseDown(event: MouseEvent) {
     // Middle mouse = always pan
@@ -85,7 +67,7 @@ export class Editor implements OnInit {
     }
 
     // Space + left mouse = pan
-    if (event.button === 0 && this.spacePressed) {
+    if (event.button === 0 && this.editorStateService.spacePressed) {
       this.startPanning(event);
       return;
     }
@@ -93,15 +75,15 @@ export class Editor implements OnInit {
     // Select tool + left mouse on empty canvas = pan
     if (
       event.button === 0 &&
-      this.activeTool === 'select' &&
+      this.editorStateService.activeTool === 'select' &&
       event.target === event.currentTarget
     ) {
       this.startPanning(event);
     }
   }
   onCanvasMouseUp(event: MouseEvent) {
-    if (this.isPanning) {
-      this.isPanning = false;
+    if (this.editorStateService.isPanning) {
+      this.editorStateService.isPanning = false;
       return;
     }
 
@@ -111,51 +93,27 @@ export class Editor implements OnInit {
   private startPanning(event: MouseEvent) {
     event.preventDefault();
 
-    this.isPanning = true;
+    this.editorStateService.isPanning = true;
 
-    this.panStart = {
+    this.editorStateService.panStart = {
       x: event.clientX,
       y: event.clientY,
     };
 
-    this.panOrigin = {
-      x: this.panX,
-      y: this.panY,
+    this.editorStateService.panOrigin = {
+      x: this.editorStateService.panX,
+      y: this.editorStateService.panY,
     };
   }
 
-  spacePressed = false;
   // --------------------------------------------------
   // Editor state
   // --------------------------------------------------
-  zoom = 1;
-  panX = 0;
-  panY = 0;
 
-  isPanning = false;
-
-  private panStart = {
-    x: 0,
-    y: 0,
-  };
-
-  private panOrigin = {
-    x: 0,
-    y: 0,
-  };
-
-  activeTool: EditorTool = 'select';
-
-  angleSnap = 45;
-  snapDistance = 20;
-
-  shiftPressed = false;
-
-  drawingStart: Point | null = null;
-  mousePosition: Point | null = null;
-  snapTarget: Point | null = null;
-
-  constructor(public propertyService: PropertyService) {}
+  constructor(
+    public propertyService: PropertyService,
+    public editorStateService: EditorStateService,
+  ) {}
 
   ngOnInit() {
     this.propertyService.recalculateRooms();
@@ -166,39 +124,39 @@ export class Editor implements OnInit {
   // ==================================================
 
   setTool(tool: EditorTool) {
-    this.activeTool = tool;
+    this.editorStateService.activeTool = tool;
 
-    this.drawingStart = null;
+    this.editorStateService.drawingStart = null;
 
-    this.draggingWallId = null;
-    this.draggingEndpoint = null;
+    this.editorStateService.draggingWallId = null;
+    this.editorStateService.draggingEndpoint = null;
 
-    this.draggingDoorId = null;
-    this.draggingWindowId = null;
+    this.editorStateService.draggingDoorId = null;
+    this.editorStateService.draggingWindowId = null;
 
-    this.snapTarget = null;
+    this.editorStateService.snapTarget = null;
 
     this.placementPreview = null;
   }
 
   getCursorClass(): string {
-    return getCursorClass(this.activeTool);
+    return getCursorClass(this.editorStateService.activeTool);
   }
 
   getSelectedType(): 'wall' | 'door' | 'window' | 'room' | null {
-    if (this.selectedWallId) {
+    if (this.editorStateService.selectedWallId) {
       return 'wall';
     }
 
-    if (this.selectedDoorId) {
+    if (this.editorStateService.selectedDoorId) {
       return 'door';
     }
 
-    if (this.selectedWindowId) {
+    if (this.editorStateService.selectedWindowId) {
       return 'window';
     }
 
-    if (this.selectedRoomId) {
+    if (this.editorStateService.selectedRoomId) {
       return 'room';
     }
 
@@ -222,60 +180,63 @@ export class Editor implements OnInit {
   selectWall(wallId: string, event?: MouseEvent) {
     event?.stopPropagation();
 
-    if (this.activeTool !== 'select') {
+    if (this.editorStateService.activeTool !== 'select') {
       return;
     }
 
-    this.selectedWallId = wallId;
-    this.selectedDoorId = null;
-    this.selectedWindowId = null;
-    this.selectedRoomId = null;
+    this.editorStateService.selectedWallId = wallId;
+    this.editorStateService.selectedDoorId = null;
+    this.editorStateService.selectedWindowId = null;
+    this.editorStateService.selectedRoomId = null;
   }
 
   selectDoor(doorId: string, event: MouseEvent) {
     event.stopPropagation();
 
-    if (this.activeTool !== 'select') {
+    if (this.editorStateService.activeTool !== 'select') {
       return;
     }
 
-    this.selectedDoorId = doorId;
-    this.selectedWallId = null;
-    this.selectedWindowId = null;
-    this.selectedRoomId = null;
+    this.editorStateService.selectedDoorId = doorId;
+    this.editorStateService.selectedWallId = null;
+    this.editorStateService.selectedWindowId = null;
+    this.editorStateService.selectedRoomId = null;
   }
 
   selectWindow(windowId: string, event: MouseEvent) {
     event.stopPropagation();
 
-    if (this.activeTool !== 'select') {
+    if (this.editorStateService.activeTool !== 'select') {
       return;
     }
 
-    this.selectedWindowId = windowId;
-    this.selectedDoorId = null;
-    this.selectedWallId = null;
-    this.selectedRoomId = null;
+    this.editorStateService.selectedWindowId = windowId;
+    this.editorStateService.selectedDoorId = null;
+    this.editorStateService.selectedWallId = null;
+    this.editorStateService.selectedRoomId = null;
   }
 
-  selectRoom(roomId: string, event: MouseEvent) {
-    event.stopPropagation();
+  selectRoom(roomId: string, event?: MouseEvent) {
+    event?.stopPropagation();
 
-    if (this.activeTool !== 'select') {
+    if (
+      this.editorStateService.activeTool !== 'select' &&
+      this.editorStateService.activeTool !== 'room'
+    ) {
       return;
     }
 
-    this.selectedRoomId = roomId;
-    this.selectedWallId = null;
-    this.selectedDoorId = null;
-    this.selectedWindowId = null;
+    this.editorStateService.selectedRoomId = roomId;
+    this.editorStateService.selectedWallId = null;
+    this.editorStateService.selectedDoorId = null;
+    this.editorStateService.selectedWindowId = null;
   }
 
   clearSelection() {
-    this.selectedWallId = null;
-    this.selectedRoomId = null;
-    this.selectedDoorId = null;
-    this.selectedWindowId = null;
+    this.editorStateService.selectedWallId = null;
+    this.editorStateService.selectedRoomId = null;
+    this.editorStateService.selectedDoorId = null;
+    this.editorStateService.selectedWindowId = null;
   }
 
   // ==================================================
@@ -283,54 +244,60 @@ export class Editor implements OnInit {
   // ==================================================
 
   deleteSelected() {
-    if (this.selectedDoorId) {
+    if (this.editorStateService.selectedDoorId) {
       this.deleteSelectedDoor();
       return;
     }
 
-    if (this.selectedWindowId) {
+    if (this.editorStateService.selectedWindowId) {
       this.deleteSelectedWindow();
       return;
     }
 
-    if (this.selectedWallId) {
+    if (this.editorStateService.selectedWallId) {
       this.deleteSelectedWall();
     }
   }
 
   deleteSelectedDoor() {
-    if (!this.selectedDoorId) {
+    if (!this.editorStateService.selectedDoorId) {
       return;
     }
 
-    this.propertyService.removeDoor(this.selectedDoorId);
-    this.selectedDoorId = null;
+    this.propertyService.removeDoor(this.editorStateService.selectedDoorId);
+    this.editorStateService.selectedDoorId = null;
   }
 
   deleteSelectedWindow() {
-    if (!this.selectedWindowId) {
+    if (!this.editorStateService.selectedWindowId) {
       return;
     }
 
-    this.propertyService.removeWindow(this.selectedWindowId);
-    this.selectedWindowId = null;
+    this.propertyService.removeWindow(this.editorStateService.selectedWindowId);
+    this.editorStateService.selectedWindowId = null;
   }
 
   deleteSelectedWall() {
-    if (!this.selectedWallId) {
+    if (!this.editorStateService.selectedWallId) {
       return;
     }
 
-    this.propertyService.removeWall(this.selectedWallId);
-    this.selectedWallId = null;
+    this.propertyService.removeWall(this.editorStateService.selectedWallId);
+    this.editorStateService.selectedWallId = null;
   }
 
   // ==================================================
   // ROOM
   // ==================================================
 
+  isPointInsideRoom(point: Point, room: Room): boolean {
+    return isPointInsidePolygon(point, room.polygon);
+  }
+
   getSelectedRoom() {
-    return this.propertyService.property.rooms.find((room) => room.id === this.selectedRoomId);
+    return this.propertyService.property.rooms.find(
+      (room) => room.id === this.editorStateService.selectedRoomId,
+    );
   }
 
   renameSelectedRoom(event: Event) {
@@ -351,21 +318,21 @@ export class Editor implements OnInit {
   startDraggingDoor(event: MouseEvent, doorId: string) {
     event.stopPropagation();
 
-    if (this.activeTool !== 'select') {
+    if (this.editorStateService.activeTool !== 'select') {
       return;
     }
 
-    this.selectedDoorId = doorId;
-    this.selectedWallId = null;
-    this.selectedRoomId = null;
-    this.selectedWindowId = null;
+    this.editorStateService.selectedDoorId = doorId;
+    this.editorStateService.selectedWallId = null;
+    this.editorStateService.selectedRoomId = null;
+    this.editorStateService.selectedWindowId = null;
 
-    this.draggingDoorId = doorId;
+    this.editorStateService.draggingDoorId = doorId;
   }
 
   dragDoor(point: Point) {
     const door = this.propertyService.property.doors.find(
-      (door) => door.id === this.draggingDoorId,
+      (door) => door.id === this.editorStateService.draggingDoorId,
     );
 
     if (!door) {
@@ -381,14 +348,14 @@ export class Editor implements OnInit {
     const attachDistance = 40;
 
     if (result.distance > attachDistance) {
-      this.snapTarget = null;
+      this.editorStateService.snapTarget = null;
       return;
     }
 
     door.wallId = result.wall.id;
     door.position = result.position;
 
-    this.snapTarget = {
+    this.editorStateService.snapTarget = {
       x: result.wall.start.x + (result.wall.end.x - result.wall.start.x) * result.position,
 
       y: result.wall.start.y + (result.wall.end.y - result.wall.start.y) * result.position,
@@ -402,21 +369,21 @@ export class Editor implements OnInit {
   startDraggingWindow(event: MouseEvent, windowId: string) {
     event.stopPropagation();
 
-    if (this.activeTool !== 'select') {
+    if (this.editorStateService.activeTool !== 'select') {
       return;
     }
 
-    this.selectedWindowId = windowId;
-    this.selectedDoorId = null;
-    this.selectedWallId = null;
-    this.selectedRoomId = null;
+    this.editorStateService.selectedWindowId = windowId;
+    this.editorStateService.selectedDoorId = null;
+    this.editorStateService.selectedWallId = null;
+    this.editorStateService.selectedRoomId = null;
 
-    this.draggingWindowId = windowId;
+    this.editorStateService.draggingWindowId = windowId;
   }
 
   dragWindow(point: Point) {
     const window = this.propertyService.property.windows.find(
-      (window) => window.id === this.draggingWindowId,
+      (window) => window.id === this.editorStateService.draggingWindowId,
     );
 
     if (!window) {
@@ -432,14 +399,14 @@ export class Editor implements OnInit {
     const attachDistance = 40;
 
     if (result.distance > attachDistance) {
-      this.snapTarget = null;
+      this.editorStateService.snapTarget = null;
       return;
     }
 
     window.wallId = result.wall.id;
     window.position = result.position;
 
-    this.snapTarget = {
+    this.editorStateService.snapTarget = {
       x: result.wall.start.x + (result.wall.end.x - result.wall.start.x) * result.position,
 
       y: result.wall.start.y + (result.wall.end.y - result.wall.start.y) * result.position,
@@ -453,17 +420,17 @@ export class Editor implements OnInit {
   startDragging(event: MouseEvent, wallId: string, endpoint: 'start' | 'end') {
     event.stopPropagation();
 
-    this.draggingWallId = wallId;
-    this.draggingEndpoint = endpoint;
+    this.editorStateService.draggingWallId = wallId;
+    this.editorStateService.draggingEndpoint = endpoint;
   }
 
   dragWallEndpoint(point: Point) {
-    if (!this.draggingWallId || !this.draggingEndpoint) {
+    if (!this.editorStateService.draggingWallId || !this.editorStateService.draggingEndpoint) {
       return;
     }
 
     const wall = this.propertyService.property.walls.find(
-      (wall) => wall.id === this.draggingWallId,
+      (wall) => wall.id === this.editorStateService.draggingWallId,
     );
 
     if (!wall) {
@@ -472,26 +439,27 @@ export class Editor implements OnInit {
 
     let dragPoint = point;
 
-    if (this.shiftPressed) {
-      const fixedPoint = this.draggingEndpoint === 'start' ? wall.end : wall.start;
+    if (this.editorStateService.shiftPressed) {
+      const fixedPoint =
+        this.editorStateService.draggingEndpoint === 'start' ? wall.end : wall.start;
 
-      dragPoint = snapAngle(fixedPoint, point, this.angleSnap);
+      dragPoint = snapAngle(fixedPoint, point, this.editorStateService.angleSnap);
     }
 
     const snappedPoint = snapPoint(
       this.propertyService.property.walls,
       dragPoint,
-      this.snapDistance,
-      this.draggingWallId,
+      this.editorStateService.snapDistance,
+      this.editorStateService.draggingWallId,
     );
 
     if (snappedPoint.x !== point.x || snappedPoint.y !== point.y) {
-      this.snapTarget = snappedPoint;
+      this.editorStateService.snapTarget = snappedPoint;
     } else {
-      this.snapTarget = null;
+      this.editorStateService.snapTarget = null;
     }
 
-    wall[this.draggingEndpoint] = {
+    wall[this.editorStateService.draggingEndpoint] = {
       x: snappedPoint.x,
       y: snappedPoint.y,
     };
@@ -504,24 +472,24 @@ export class Editor implements OnInit {
   onMouseMove(event: MouseEvent) {
     const point = this.getSvgPoint(event);
     const drawingPoint = getDrawingPoint(
-      this.drawingStart ?? point,
+      this.editorStateService.drawingStart ?? point,
       point,
       this.propertyService.property.walls,
-      this.shiftPressed,
-      this.angleSnap,
-      this.snapDistance,
+      this.editorStateService.shiftPressed,
+      this.editorStateService.angleSnap,
+      this.editorStateService.snapDistance,
     );
 
     // --------------------------------
     // viewport panning
     // --------------------------------
 
-    if (this.isPanning) {
-      const dx = event.clientX - this.panStart.x;
-      const dy = event.clientY - this.panStart.y;
+    if (this.editorStateService.isPanning) {
+      const dx = event.clientX - this.editorStateService.panStart.x;
+      const dy = event.clientY - this.editorStateService.panStart.y;
 
-      this.panX = this.panOrigin.x + dx;
-      this.panY = this.panOrigin.y + dy;
+      this.editorStateService.panX = this.editorStateService.panOrigin.x + dx;
+      this.editorStateService.panY = this.editorStateService.panOrigin.y + dy;
 
       return;
     }
@@ -530,8 +498,11 @@ export class Editor implements OnInit {
     // Door / Window placement preview
     // --------------------------------
 
-    if (this.activeTool === 'door' || this.activeTool === 'window') {
-      this.mousePosition = point;
+    if (
+      this.editorStateService.activeTool === 'door' ||
+      this.editorStateService.activeTool === 'window'
+    ) {
+      this.editorStateService.mousePosition = point;
       this.updatePlacementPreview(point);
       return;
     }
@@ -540,7 +511,7 @@ export class Editor implements OnInit {
     // Dragging a door
     // --------------------------------
 
-    if (this.draggingDoorId) {
+    if (this.editorStateService.draggingDoorId) {
       this.dragDoor(point);
       return;
     }
@@ -549,7 +520,7 @@ export class Editor implements OnInit {
     // Dragging a window
     // --------------------------------
 
-    if (this.draggingWindowId) {
+    if (this.editorStateService.draggingWindowId) {
       this.dragWindow(point);
       return;
     }
@@ -558,13 +529,13 @@ export class Editor implements OnInit {
     // Drawing a new wall
     // --------------------------------
 
-    if (this.activeTool === 'wall' && this.drawingStart) {
-      this.mousePosition = drawingPoint;
+    if (this.editorStateService.activeTool === 'wall' && this.editorStateService.drawingStart) {
+      this.editorStateService.mousePosition = drawingPoint;
 
       if (drawingPoint.x !== point.x || drawingPoint.y !== point.y) {
-        this.snapTarget = drawingPoint;
+        this.editorStateService.snapTarget = drawingPoint;
       } else {
-        this.snapTarget = null;
+        this.editorStateService.snapTarget = null;
       }
 
       return;
@@ -574,14 +545,14 @@ export class Editor implements OnInit {
     // Normal mouse movement
     // --------------------------------
 
-    this.mousePosition = point;
+    this.editorStateService.mousePosition = point;
 
     // --------------------------------
     // Existing wall endpoint dragging
     // --------------------------------
 
-    if (!this.draggingWallId || !this.draggingEndpoint) {
-      this.snapTarget = null;
+    if (!this.editorStateService.draggingWallId || !this.editorStateService.draggingEndpoint) {
+      this.editorStateService.snapTarget = null;
       return;
     }
 
@@ -592,9 +563,9 @@ export class Editor implements OnInit {
     return getSvgPoint(
       event,
       event.currentTarget as SVGSVGElement,
-      this.panX,
-      this.panY,
-      this.zoom,
+      this.editorStateService.panX,
+      this.editorStateService.panY,
+      this.editorStateService.zoom,
     );
   }
 
@@ -613,7 +584,10 @@ export class Editor implements OnInit {
   }
 
   updatePlacementPreview(point: Point) {
-    if (this.activeTool !== 'door' && this.activeTool !== 'window') {
+    if (
+      this.editorStateService.activeTool !== 'door' &&
+      this.editorStateService.activeTool !== 'window'
+    ) {
       this.placementPreview = null;
       return;
     }
@@ -626,7 +600,7 @@ export class Editor implements OnInit {
   // ==================================================
 
   onSvgClick(event: MouseEvent) {
-    switch (this.activeTool) {
+    switch (this.editorStateService.activeTool) {
       case 'wall':
         this.handleWallClick(event);
         break;
@@ -660,24 +634,28 @@ export class Editor implements OnInit {
   handleWallClick(event: MouseEvent) {
     const point = this.getSvgPoint(event);
 
-    if (!this.drawingStart) {
-      this.drawingStart = snapPoint(this.propertyService.property.walls, point, this.snapDistance);
+    if (!this.editorStateService.drawingStart) {
+      this.editorStateService.drawingStart = snapPoint(
+        this.propertyService.property.walls,
+        point,
+        this.editorStateService.snapDistance,
+      );
 
       return;
     }
 
     const finalPoint = getDrawingPoint(
-      this.drawingStart,
+      this.editorStateService.drawingStart,
       point,
       this.propertyService.property.walls,
-      this.shiftPressed,
-      this.angleSnap,
-      this.snapDistance,
+      this.editorStateService.shiftPressed,
+      this.editorStateService.angleSnap,
+      this.editorStateService.snapDistance,
     );
 
     const newWall: Wall = {
       id: crypto.randomUUID(),
-      start: this.drawingStart,
+      start: this.editorStateService.drawingStart,
       end: finalPoint,
       thickness: 12,
       height: 96,
@@ -685,8 +663,8 @@ export class Editor implements OnInit {
 
     this.propertyService.addWall(newWall);
 
-    this.drawingStart = null;
-    this.snapTarget = null;
+    this.editorStateService.drawingStart = null;
+    this.editorStateService.snapTarget = null;
   }
 
   // ==================================================
@@ -765,7 +743,17 @@ export class Editor implements OnInit {
   // ==================================================
 
   handleRoomClick(event: MouseEvent) {
-    console.log('Room tool clicked');
+    const point = this.getSvgPoint(event);
+
+    const room = this.propertyService.property.rooms.find((room) =>
+      this.isPointInsideRoom(point, room),
+    );
+
+    if (!room) {
+      return;
+    }
+
+    this.selectRoom(room.id);
   }
 
   handleSensorClick(event: MouseEvent) {
@@ -777,19 +765,22 @@ export class Editor implements OnInit {
   // ==================================================
 
   stopDragging() {
-    if (this.draggingWallId) {
+    if (this.editorStateService.draggingWallId) {
       this.propertyService.wallChanged();
     }
 
-    this.draggingWallId = null;
-    this.draggingEndpoint = null;
+    this.editorStateService.draggingWallId = null;
+    this.editorStateService.draggingEndpoint = null;
 
-    this.draggingDoorId = null;
-    this.draggingWindowId = null;
+    this.editorStateService.draggingDoorId = null;
+    this.editorStateService.draggingWindowId = null;
 
-    this.snapTarget = null;
+    this.editorStateService.snapTarget = null;
 
-    if (this.activeTool === 'door' || this.activeTool === 'window') {
+    if (
+      this.editorStateService.activeTool === 'door' ||
+      this.editorStateService.activeTool === 'window'
+    ) {
       this.placementPreview = null;
     }
   }
@@ -801,13 +792,16 @@ export class Editor implements OnInit {
   @HostListener('window:keydown', ['$event'])
   handleKeyboard(event: KeyboardEvent) {
     if (event.key === 'Shift') {
-      this.shiftPressed = true;
+      this.editorStateService.shiftPressed = true;
     }
     if (event.code === 'Space') {
-      this.spacePressed = true;
+      this.editorStateService.spacePressed = true;
     }
 
-    if ((event.key === 'Delete' || event.key === 'Backspace') && this.activeTool === 'select') {
+    if (
+      (event.key === 'Delete' || event.key === 'Backspace') &&
+      this.editorStateService.activeTool === 'select'
+    ) {
       this.deleteSelected();
     }
   }
@@ -815,10 +809,10 @@ export class Editor implements OnInit {
   @HostListener('window:keyup', ['$event'])
   handleKeyboardUp(event: KeyboardEvent) {
     if (event.key === 'Shift') {
-      this.shiftPressed = false;
+      this.editorStateService.shiftPressed = false;
     }
     if (event.code === 'Space') {
-      this.spacePressed = false;
+      this.editorStateService.spacePressed = false;
     }
   }
 }

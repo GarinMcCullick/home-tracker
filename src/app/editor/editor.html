@@ -1,13 +1,30 @@
 <div class="editor" [class]="getCursorClass()">
   <div class="toolbar">
-    <button [class.active]="activeTool === 'select'" (click)="setTool('select')">Select</button>
-    <button [class.active]="activeTool === 'wall'" (click)="setTool('wall')">Wall</button>
-    <button [class.active]="activeTool === 'room'" (click)="setTool('room')">Room</button>
-    <button [class.active]="activeTool === 'door'" (click)="setTool('door')">Door</button>
-    <button [class.active]="activeTool === 'window'" (click)="setTool('window')">Window</button>
-    <button [class.active]="activeTool === 'sensor'" (click)="setTool('sensor')">Sensor</button>
+    <button [class.active]="editorStateService.activeTool === 'select'" (click)="setTool('select')">
+      Select
+    </button>
+    <button [class.active]="editorStateService.activeTool === 'wall'" (click)="setTool('wall')">
+      Wall
+    </button>
+    <button [class.active]="editorStateService.activeTool === 'room'" (click)="setTool('room')">
+      Room
+    </button>
+    <button [class.active]="editorStateService.activeTool === 'door'" (click)="setTool('door')">
+      Door
+    </button>
+    <button [class.active]="editorStateService.activeTool === 'window'" (click)="setTool('window')">
+      Window
+    </button>
+    <button [class.active]="editorStateService.activeTool === 'sensor'" (click)="setTool('sensor')">
+      Sensor
+    </button>
     <button
-      [disabled]="!selectedWallId && !selectedDoorId && !selectedWindowId && !selectedRoomId"
+      [disabled]="
+        !editorStateService.selectedWallId &&
+        !editorStateService.selectedDoorId &&
+        !editorStateService.selectedWindowId &&
+        !editorStateService.selectedRoomId
+      "
       (click)="deleteSelected()"
       *ngIf="getSelectedType()"
     >
@@ -17,7 +34,7 @@
 
   <div class="workspace">
     <div>Walls: {{ propertyService.property.walls.length }}</div>
-    @if (selectedRoomId) {
+    @if (editorStateService.selectedRoomId) {
       <div class="room-properties">
         <input [value]="getSelectedRoom()?.name ?? ''" (input)="renameSelectedRoom($event)" />
 
@@ -49,7 +66,17 @@
           />
         </pattern>
       </defs>
-      <g [attr.transform]="'translate(' + panX + ' ' + panY + ') scale(' + zoom + ')'">
+      <g
+        [attr.transform]="
+          'translate(' +
+          editorStateService.panX +
+          ' ' +
+          editorStateService.panY +
+          ') scale(' +
+          editorStateService.zoom +
+          ')'
+        "
+      >
         <rect
           x="-10000"
           y="-10000"
@@ -63,11 +90,15 @@
         @for (room of propertyService.property.rooms; track room.id) {
           <polygon
             [attr.points]="room.polygon.map((p) => p.x + ',' + p.y).join(' ')"
-            [attr.fill]="selectedRoomId === room.id ? '#bfdbfe' : '#dbeafe'"
-            class="room"
-            pointer-events="all"
+            [style.cursor]="'pointer'"
+            fill="#e0e0e0"
+            stroke="none"
+            [attr.pointer-events]="
+              editorStateService.activeTool === 'select' || editorStateService.activeTool === 'room'
+                ? 'all'
+                : 'none'
+            "
             (click)="selectRoom(room.id, $event)"
-            [attr.pointer-events]="activeTool === 'select' ? 'all' : 'none'"
           />
         }
 
@@ -75,14 +106,14 @@
         @for (wall of propertyService.property.walls; track wall.id) {
           <polygon
             [attr.points]="getWallPoints(wall)"
-            [attr.fill]="selectedWallId === wall.id ? '#2196f3' : '#333'"
+            [attr.fill]="editorStateService.selectedWallId === wall.id ? '#2196f3' : '#333'"
             class="wall"
-            [attr.pointer-events]="activeTool === 'wall' ? 'none' : 'auto'"
+            [attr.pointer-events]="editorStateService.activeTool === 'wall' ? 'none' : 'auto'"
             (click)="selectWall(wall.id, $event)"
           />
 
           <!-- WALL ENDPOINTS -->
-          @if (selectedWallId === wall.id) {
+          @if (editorStateService.selectedWallId === wall.id) {
             <circle
               [attr.cx]="wall.start.x"
               [attr.cy]="wall.start.y"
@@ -103,11 +134,25 @@
           }
         }
 
+        <!-- ROOM SELECTION OUTLINES -->
+        @for (room of propertyService.property.rooms; track room.id) {
+          @if (editorStateService.selectedRoomId === room.id) {
+            <polygon
+              [attr.points]="room.polygon.map((p) => p.x + ',' + p.y).join(' ')"
+              fill="none"
+              stroke="#2196f3"
+              stroke-width="5"
+              stroke-dasharray="8 5"
+              pointer-events="none"
+            />
+          }
+        }
+
         <!-- SNAP INDICATOR -->
-        @if (snapTarget) {
+        @if (editorStateService.snapTarget) {
           <circle
-            [attr.cx]="snapTarget.x"
-            [attr.cy]="snapTarget.y"
+            [attr.cx]="editorStateService.snapTarget.x"
+            [attr.cy]="editorStateService.snapTarget.y"
             r="14"
             fill="none"
             stroke="#2196f3"
@@ -117,12 +162,16 @@
         }
 
         <!-- NEW WALL PREVIEW -->
-        @if (activeTool === 'wall' && drawingStart && mousePosition) {
+        @if (
+          editorStateService.activeTool === 'wall' &&
+          editorStateService.drawingStart &&
+          editorStateService.mousePosition
+        ) {
           <line
-            [attr.x1]="drawingStart.x"
-            [attr.y1]="drawingStart.y"
-            [attr.x2]="mousePosition.x"
-            [attr.y2]="mousePosition.y"
+            [attr.x1]="editorStateService.drawingStart.x"
+            [attr.y1]="editorStateService.drawingStart.y"
+            [attr.x2]="editorStateService.mousePosition.x"
+            [attr.y2]="editorStateService.mousePosition.y"
             stroke="#2196f3"
             stroke-width="4"
             stroke-dasharray="10 5"
@@ -135,7 +184,7 @@
           <g
             [attr.transform]="getDoorTransform(door)"
             class="door"
-            [attr.pointer-events]="activeTool === 'select' ? 'auto' : 'none'"
+            [attr.pointer-events]="editorStateService.activeTool === 'select' ? 'auto' : 'none'"
             (click)="selectDoor(door.id, $event)"
             (mousedown)="startDraggingDoor($event, door.id)"
           >
@@ -148,7 +197,7 @@
               y1="0"
               x2="40"
               y2="0"
-              [attr.stroke]="selectedDoorId === door.id ? '#2196f3' : '#8b4513'"
+              [attr.stroke]="editorStateService.selectedDoorId === door.id ? '#2196f3' : '#8b4513'"
               stroke-width="6"
             />
 
@@ -156,12 +205,12 @@
             <path
               d="M -40 0 A 80 80 0 0 1 40 80"
               fill="none"
-              [attr.stroke]="selectedDoorId === door.id ? '#2196f3' : '#8b4513'"
+              [attr.stroke]="editorStateService.selectedDoorId === door.id ? '#2196f3' : '#8b4513'"
               stroke-width="2"
             />
 
             <!-- Selection indicator -->
-            @if (selectedDoorId === door.id) {
+            @if (editorStateService.selectedDoorId === door.id) {
               <circle
                 cx="0"
                 cy="0"
@@ -175,7 +224,7 @@
           </g>
         }
         <!-- DOOR PLACEMENT PREVIEW -->
-        @if (activeTool === 'door' && placementPreview) {
+        @if (editorStateService.activeTool === 'door' && placementPreview) {
           <g
             [attr.transform]="getPlacementTransform()"
             class="door placement-preview"
@@ -196,7 +245,7 @@
           <g
             [attr.transform]="getWindowTransform(window)"
             class="window"
-            [attr.pointer-events]="activeTool === 'select' ? 'auto' : 'none'"
+            [attr.pointer-events]="editorStateService.activeTool === 'select' ? 'auto' : 'none'"
             (click)="selectWindow(window.id, $event)"
             (mousedown)="startDraggingWindow($event, window.id)"
           >
@@ -209,7 +258,9 @@
               y="-4"
               width="90"
               height="8"
-              [attr.fill]="selectedWindowId === window.id ? '#2196f3' : '#60a5fa'"
+              [attr.fill]="
+                editorStateService.selectedWindowId === window.id ? '#2196f3' : '#60a5fa'
+              "
             />
 
             <!-- Frame -->
@@ -217,7 +268,7 @@
 
             <line x1="-50" y1="7" x2="50" y2="7" stroke="#555" stroke-width="3" />
 
-            @if (selectedWindowId === window.id) {
+            @if (editorStateService.selectedWindowId === window.id) {
               <rect
                 x="-58"
                 y="-15"
@@ -231,7 +282,7 @@
           </g>
         }
         <!-- WINDOW PLACEMENT PREVIEW -->
-        @if (activeTool === 'window' && placementPreview) {
+        @if (editorStateService.activeTool === 'window' && placementPreview) {
           <g
             [attr.transform]="getPlacementTransform()"
             class="window placement-preview"
