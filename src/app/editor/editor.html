@@ -228,11 +228,7 @@
           />
         }
         <!-- DRAWING ALIGNMENT GUIDES -->
-        @if (
-          editorStateService.activeTool === 'wall' &&
-          editorStateService.drawingStart &&
-          drawingGuide
-        ) {
+        @if (drawingGuide) {
           <!-- HORIZONTAL ALIGNMENT -->
           @if (drawingGuide.horizontal !== null) {
             <line

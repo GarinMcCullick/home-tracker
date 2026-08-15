@@ -751,29 +751,61 @@ export class Editor implements OnInit {
     // Moving one endpoint
     // --------------------------------
 
-    let dragPoint = point;
+    const draggingEndpoint = this.editorStateService.draggingEndpoint;
 
-    if (this.editorStateService.shiftPressed) {
-      const fixedPoint =
-        this.editorStateService.draggingEndpoint === 'start' ? wall.end : wall.start;
-
-      dragPoint = snapAngle(fixedPoint, point, this.editorStateService.angleSnap);
+    if (!draggingEndpoint) {
+      return;
     }
+
+    const fixedPoint = draggingEndpoint === 'start' ? wall.end : wall.start;
+
+    // --------------------------------
+    // Clean geometry / angle snapping
+    // --------------------------------
+
+    const drawingPoint = getDrawingPoint(
+      fixedPoint,
+      point,
+      this.propertyService.property.walls,
+      this.editorStateService.shiftPressed,
+      this.editorStateService.angleSnap,
+      this.editorStateService.snapDistance,
+    );
+
+    // --------------------------------
+    // Architectural alignment guide
+    // --------------------------------
+
+    this.drawingGuide = getDrawingGuide(
+      point,
+      this.propertyService.property.walls,
+      this.editorStateService.snapDistance,
+      fixedPoint,
+      this.editorStateService.draggingWallId,
+    );
+
+    // --------------------------------
+    // Point snapping
+    // --------------------------------
 
     const snappedPoint = snapPoint(
       this.propertyService.property.walls,
-      dragPoint,
+      drawingPoint,
       this.editorStateService.snapDistance,
       this.editorStateService.draggingWallId,
     );
 
-    if (snappedPoint.x !== dragPoint.x || snappedPoint.y !== dragPoint.y) {
+    if (snappedPoint.x !== drawingPoint.x || snappedPoint.y !== drawingPoint.y) {
       this.editorStateService.snapTarget = snappedPoint;
     } else {
       this.editorStateService.snapTarget = null;
     }
 
-    wall[this.editorStateService.draggingEndpoint] = {
+    // --------------------------------
+    // Apply endpoint
+    // --------------------------------
+
+    wall[draggingEndpoint] = {
       x: snappedPoint.x,
       y: snappedPoint.y,
     };
@@ -894,11 +926,17 @@ export class Editor implements OnInit {
     this.editorStateService.mousePosition = point;
     this.drawingGuide = null;
 
+    // --------------------------------
     // Existing wall endpoint dragging
-    if (!this.editorStateService.draggingWallId || !this.editorStateService.draggingEndpoint) {
-      this.editorStateService.snapTarget = null;
+    // --------------------------------
+
+    if (this.editorStateService.draggingWallId && this.editorStateService.draggingEndpoint) {
+      this.dragWall(point);
       return;
     }
+
+    this.editorStateService.snapTarget = null;
+    this.drawingGuide = null;
   }
 
   getSvgPoint(event: MouseEvent): Point {
@@ -1039,7 +1077,7 @@ export class Editor implements OnInit {
       end: {
         ...finalPoint,
       },
-      thickness: 12,
+      thickness: 4,
       height: 96,
     };
 

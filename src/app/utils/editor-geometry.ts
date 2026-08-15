@@ -230,6 +230,7 @@ export function getDrawingGuide(
   walls: Wall[],
   snapDistance: number,
   drawingStart?: Point | null,
+  ignoredWallId?: string,
 ): DrawingGuide | null {
   let horizontal: number | null = null;
   let vertical: number | null = null;
@@ -238,10 +239,13 @@ export function getDrawingGuide(
   let closestVerticalDistance = Infinity;
 
   for (const wall of walls) {
-    const endpoints = [wall.start, wall.end];
+    // Don't guide against the wall currently being edited.
+    if (wall.id === ignoredWallId) {
+      continue;
+    }
 
-    for (const endpoint of endpoints) {
-      // Don't guide against the point we're currently drawing from.
+    for (const endpoint of [wall.start, wall.end]) {
+      // Don't guide against the drawing start / fixed endpoint.
       if (
         drawingStart &&
         Math.abs(endpoint.x - drawingStart.x) < 0.001 &&
