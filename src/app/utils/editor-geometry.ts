@@ -151,8 +151,249 @@ export function getWallLength(wall: Wall): number {
 }
 
 // ==================================================
-// Drawing
+// DRAWING
 // ==================================================
+
+function normalizeAngle(angle: number): number {
+  while (angle > 180) {
+    angle -= 360;
+  }
+
+  while (angle < -180) {
+    angle += 360;
+  }
+
+  return angle;
+}
+
+function angleDifference(a: number, b: number): number {
+  return Math.abs(normalizeAngle(a - b));
+}
+
+function getWallDirection(wall: Wall): number {
+  return getWallAngle(wall);
+}
+
+/**
+ * Finds a nearby wall endpoint to use as a drawing reference.
+ */
+function findNearbyEndpoint(
+  walls: Wall[],
+  point: Point,
+  snapDistance: number,
+): {
+  point: Point;
+  wall: Wall;
+} | null {
+  let closest: {
+    point: Point;
+    wall: Wall;
+    distance: number;
+  } | null = null;
+
+  for (const wall of walls) {
+    for (const endpoint of [wall.start, wall.end]) {
+      const distance = Math.hypot(point.x - endpoint.x, point.y - endpoint.y);
+
+      if (distance > snapDistance) {
+        continue;
+      }
+
+      if (!closest || distance < closest.distance) {
+        closest = {
+          point: endpoint,
+          wall,
+          distance,
+        };
+      }
+    }
+  }
+
+  return closest
+    ? {
+        point: { ...closest.point },
+        wall: closest.wall,
+      }
+    : null;
+}
+// ==================================================
+// DRAWING ALIGNMENT GUIDE
+// ==================================================
+
+export interface DrawingGuide {
+  horizontal: number | null;
+  vertical: number | null;
+}
+
+export function getDrawingGuide(
+  point: Point,
+  walls: Wall[],
+  snapDistance: number,
+  drawingStart?: Point | null,
+): DrawingGuide | null {
+  let horizontal: number | null = null;
+  let vertical: number | null = null;
+
+  let closestHorizontalDistance = Infinity;
+  let closestVerticalDistance = Infinity;
+
+  for (const wall of walls) {
+    const endpoints = [wall.start, wall.end];
+
+    for (const endpoint of endpoints) {
+      // Don't guide against the point we're currently drawing from.
+      if (
+        drawingStart &&
+        Math.abs(endpoint.x - drawingStart.x) < 0.001 &&
+        Math.abs(endpoint.y - drawingStart.y) < 0.001
+      ) {
+        continue;
+      }
+
+      // --------------------------------
+      // Horizontal alignment
+      // --------------------------------
+
+      const horizontalDistance = Math.abs(point.y - endpoint.y);
+
+      if (horizontalDistance <= snapDistance && horizontalDistance < closestHorizontalDistance) {
+        closestHorizontalDistance = horizontalDistance;
+        horizontal = endpoint.y;
+      }
+
+      // --------------------------------
+      // Vertical alignment
+      // --------------------------------
+
+      const verticalDistance = Math.abs(point.x - endpoint.x);
+
+      if (verticalDistance <= snapDistance && verticalDistance < closestVerticalDistance) {
+        closestVerticalDistance = verticalDistance;
+        vertical = endpoint.x;
+      }
+    }
+  }
+
+  if (horizontal === null && vertical === null) {
+    return null;
+  }
+
+  return {
+    horizontal,
+    vertical,
+  };
+}
+
+/**
+ * Returns a point projected from start at a specific angle
+ * while preserving the cursor distance.
+ */
+function projectAtAngle(start: Point, point: Point, angle: number): Point {
+  const distance = Math.hypot(point.x - start.x, point.y - start.y);
+
+  const radians = (angle * Math.PI) / 180;
+
+  return {
+    x: start.x + Math.cos(radians) * distance,
+    y: start.y + Math.sin(radians) * distance,
+  };
+}
+
+/**
+ * Finds the best architectural angle for a new wall.
+ *
+ * Priority:
+ *
+ * 1. Perpendicular to a nearby wall
+ * 2. Parallel to a nearby wall
+ * 3. Horizontal / vertical
+ * 4. 45° increments
+ */
+function getPreferredDrawingAngle(
+  start: Point,
+  point: Point,
+  walls: Wall[],
+  snapDistance: number,
+): number | null {
+  const dx = point.x - start.x;
+  const dy = point.y - start.y;
+
+  const distance = Math.hypot(dx, dy);
+
+  if (distance === 0) {
+    return null;
+  }
+
+  const currentAngle = (Math.atan2(dy, dx) * 180) / Math.PI;
+
+  // --------------------------------------------------
+  // Distance-based snap tolerance
+  //
+  // Short walls = forgiving
+  // Long walls = progressively harder to accidentally snap
+  // --------------------------------------------------
+
+  const minTolerance = 1.5;
+  const maxTolerance = 6;
+
+  const distanceScale = Math.min(distance / 400, 1);
+
+  const angleTolerance = maxTolerance - (maxTolerance - minTolerance) * distanceScale;
+
+  // --------------------------------------------------
+  // Nearby wall reference
+  // --------------------------------------------------
+
+  const nearby = findNearbyEndpoint(walls, start, snapDistance * 1.5);
+
+  if (nearby) {
+    const wallAngle = getWallDirection(nearby.wall);
+
+    const candidates = [wallAngle, wallAngle + 90, wallAngle + 180, wallAngle + 270];
+
+    let bestAngle: number | null = null;
+    let bestDifference = Infinity;
+
+    for (const candidate of candidates) {
+      const difference = angleDifference(currentAngle, candidate);
+
+      if (difference < bestDifference) {
+        bestDifference = difference;
+        bestAngle = candidate;
+      }
+    }
+
+    // Stronger architectural snapping near an existing wall,
+    // but still respects the distance-based tolerance.
+    if (bestAngle !== null && bestDifference <= angleTolerance) {
+      return bestAngle;
+    }
+  }
+
+  // --------------------------------------------------
+  // General architectural snapping
+  // --------------------------------------------------
+
+  const architecturalAngles = [0, 45, 90, 135, 180, -45, -90, -135];
+
+  let bestAngle: number | null = null;
+  let bestDifference = Infinity;
+
+  for (const candidate of architecturalAngles) {
+    const difference = angleDifference(currentAngle, candidate);
+
+    if (difference < bestDifference) {
+      bestDifference = difference;
+      bestAngle = candidate;
+    }
+  }
+
+  if (bestAngle !== null && bestDifference <= angleTolerance) {
+    return bestAngle;
+  }
+
+  return null;
+}
 
 export function getDrawingPoint(
   start: Point,
@@ -162,11 +403,31 @@ export function getDrawingPoint(
   angleSnap: number,
   snapDistance: number,
 ): Point {
-  let finalPoint = point;
+  let finalPoint = { ...point };
+
+  // --------------------------------------------------
+  // SHIFT = strong/manual angle snapping
+  // --------------------------------------------------
 
   if (shiftPressed) {
     finalPoint = snapAngle(start, finalPoint, angleSnap);
+  } else {
+    // --------------------------------------------------
+    // Normal architectural snapping
+    // --------------------------------------------------
+
+    const preferredAngle = getPreferredDrawingAngle(start, finalPoint, walls, snapDistance);
+
+    if (preferredAngle !== null) {
+      finalPoint = projectAtAngle(start, finalPoint, preferredAngle);
+    }
   }
 
-  return snapPoint(walls, finalPoint, snapDistance);
+  // --------------------------------------------------
+  // Endpoint snapping happens last
+  // --------------------------------------------------
+
+  finalPoint = snapPoint(walls, finalPoint, snapDistance);
+
+  return finalPoint;
 }

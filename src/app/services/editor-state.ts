@@ -30,9 +30,14 @@ export class EditorStateService {
   // Dragging
   // --------------------------------------------------
 
+  // Whole-wall dragging
   draggingWallId: string | null = null;
+  draggingWallMove = false;
+
+  // Endpoint dragging
   draggingEndpoint: 'start' | 'end' | null = null;
 
+  // Door / window dragging
   draggingDoorId: string | null = null;
   draggingWindowId: string | null = null;
 
