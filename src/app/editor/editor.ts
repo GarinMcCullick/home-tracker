@@ -1,5 +1,6 @@
 import { Component, HostListener, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 
 import { PropertyService } from '../services/property';
 import { EditorStateService, EditorTool, Point } from '../services/editor-state';
@@ -30,7 +31,7 @@ import { getCursorClass } from '../utils/editor-utils';
 @Component({
   selector: 'app-editor',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './editor.html',
   styleUrl: './editor.scss',
 })
@@ -174,6 +175,176 @@ export class Editor implements OnInit {
   }
 
   // ==================================================
+  // WALL DIMENSIONS
+  // ==================================================
+  wallLengthInput = '';
+  wallDimensionFocused = false;
+  wallDimensionPosition: Point | null = null;
+  onWallDimensionFocus() {
+    this.wallDimensionFocused = true;
+  }
+
+  onWallDimensionBlur() {
+    // Delay this slightly so clicking Apply Left/Right
+    // doesn't immediately hide the buttons.
+    setTimeout(() => {
+      this.wallDimensionFocused = false;
+    }, 100);
+  }
+  getSelectedWall(): Wall | undefined {
+    const wallId = this.editorStateService.selectedWallId;
+
+    if (!wallId) {
+      return undefined;
+    }
+
+    return this.propertyService.property.walls.find((wall) => wall.id === wallId);
+  }
+
+  getWallLength(wall: Wall): number {
+    return Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
+  }
+
+  formatWallLength(length: number): string {
+    // Our editor units are inches.
+    const totalInches = length;
+
+    const feet = Math.floor(totalInches / 12);
+    const inches = totalInches - feet * 12;
+
+    if (Math.abs(inches) < 0.01) {
+      return `${feet}'`;
+    }
+
+    return `${feet}' ${inches.toFixed(1)}"`;
+  }
+
+  parseWallLength(value: string): number | null {
+    const input = value.trim();
+
+    if (!input) {
+      return null;
+    }
+
+    /*
+     * Supports:
+     *
+     * 12
+     * 12'
+     * 12' 6"
+     * 12'6"
+     * 12' 6.5"
+     * 150"
+     */
+
+    const feetMatch = input.match(/(\d+(?:\.\d+)?)\s*'/);
+    const inchMatch = input.match(/(\d+(?:\.\d+)?)\s*"?$/);
+
+    let feet = 0;
+    let inches = 0;
+
+    if (feetMatch) {
+      feet = Number(feetMatch[1]);
+    }
+
+    if (inchMatch) {
+      inches = Number(inchMatch[1]);
+    }
+
+    // Plain number = inches
+    if (!feetMatch && !inchMatch) {
+      const number = Number(input);
+
+      return Number.isFinite(number) ? number : null;
+    }
+
+    return feet * 12 + inches;
+  }
+
+  applyWallLength(value: string, side: 'start' | 'end') {
+    const wall = this.getSelectedWall();
+
+    if (!wall) {
+      return;
+    }
+
+    const newLength = this.parseWallLength(value);
+
+    if (newLength === null || newLength <= 0) {
+      return;
+    }
+
+    const dx = wall.end.x - wall.start.x;
+    const dy = wall.end.y - wall.start.y;
+
+    const currentLength = Math.hypot(dx, dy);
+
+    if (currentLength === 0) {
+      return;
+    }
+
+    const directionX = dx / currentLength;
+    const directionY = dy / currentLength;
+
+    if (side === 'start') {
+      wall.start = {
+        x: wall.end.x - directionX * newLength,
+        y: wall.end.y - directionY * newLength,
+      };
+    } else {
+      wall.end = {
+        x: wall.start.x + directionX * newLength,
+        y: wall.start.y + directionY * newLength,
+      };
+    }
+
+    this.propertyService.wallChanged();
+  }
+
+  getWallDimensionPosition(wall: Wall): Point {
+    const centerX = (wall.start.x + wall.end.x) / 2;
+    const centerY = (wall.start.y + wall.end.y) / 2;
+
+    const dx = wall.end.x - wall.start.x;
+    const dy = wall.end.y - wall.start.y;
+
+    const length = Math.hypot(dx, dy);
+
+    if (length === 0) {
+      return {
+        x: centerX,
+        y: centerY - 25,
+      };
+    }
+
+    // Perpendicular offset
+    const offset = 25;
+
+    return {
+      x: centerX - (dy / length) * offset,
+      y: centerY + (dx / length) * offset,
+    };
+  }
+  getWallDimensionTransform(wall: Wall): string {
+    const position = this.getWallDimensionPosition(wall);
+
+    return `translate(${position.x} ${position.y})`;
+  }
+
+  getWallDimensionRotation(wall: Wall): number {
+    const dx = wall.end.x - wall.start.x;
+    const dy = wall.end.y - wall.start.y;
+
+    let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    // Keep the text readable instead of upside down.
+    if (angle > 90 || angle < -90) {
+      angle += 180;
+    }
+
+    return angle;
+  }
+  // ==================================================
   // SELECTION
   // ==================================================
 
@@ -188,6 +359,26 @@ export class Editor implements OnInit {
     this.editorStateService.selectedDoorId = null;
     this.editorStateService.selectedWindowId = null;
     this.editorStateService.selectedRoomId = null;
+
+    const wall = this.propertyService.property.walls.find((wall) => wall.id === wallId);
+
+    if (wall) {
+      this.wallLengthInput = this.formatWallLength(this.getWallLength(wall));
+    }
+
+    // Store the actual screen position where the wall was clicked.
+    if (event) {
+      const svg = (event.currentTarget as SVGElement).ownerSVGElement;
+
+      if (svg) {
+        const rect = svg.getBoundingClientRect();
+
+        this.wallDimensionPosition = {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top,
+        };
+      }
+    }
   }
 
   selectDoor(doorId: string, event: MouseEvent) {
@@ -237,6 +428,10 @@ export class Editor implements OnInit {
     this.editorStateService.selectedRoomId = null;
     this.editorStateService.selectedDoorId = null;
     this.editorStateService.selectedWindowId = null;
+
+    this.wallLengthInput = '';
+    this.wallDimensionFocused = false;
+    this.wallDimensionPosition = null;
   }
 
   // ==================================================
@@ -283,7 +478,11 @@ export class Editor implements OnInit {
     }
 
     this.propertyService.removeWall(this.editorStateService.selectedWallId);
+
     this.editorStateService.selectedWallId = null;
+    this.wallLengthInput = '';
+    this.wallDimensionFocused = false;
+    this.wallDimensionPosition = null;
   }
 
   // ==================================================
@@ -794,8 +993,16 @@ export class Editor implements OnInit {
     if (event.key === 'Shift') {
       this.editorStateService.shiftPressed = true;
     }
+
     if (event.code === 'Space') {
       this.editorStateService.spacePressed = true;
+    }
+
+    // Don't let editor shortcuts fire while typing in an input.
+    const target = event.target as HTMLElement;
+
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+      return;
     }
 
     if (

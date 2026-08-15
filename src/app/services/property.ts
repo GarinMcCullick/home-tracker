@@ -57,7 +57,7 @@ export class PropertyService {
   };
 
   recalculateRooms() {
-    this.property.rooms = this.roomService.findRooms(this.property.walls);
+    this.property.rooms = this.roomService.findRooms(this.property.walls, this.property.rooms);
   }
 
   addWall(wall: Wall) {

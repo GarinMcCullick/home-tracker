@@ -25,6 +25,7 @@
 .workspace {
   flex: 1;
   overflow: hidden;
+  position: relative;
 }
 
 .floor-plan {
@@ -83,4 +84,101 @@
   opacity: 0.6;
   pointer-events: none;
   filter: drop-shadow(0 0 3px rgba(33, 150, 243, 0.6));
+}
+
+.wall-dimension-editor {
+  position: absolute;
+
+  transform: translate(-50%, 25%);
+
+  z-index: 1000;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  pointer-events: auto;
+}
+
+.wall-dimension-ui {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wall-length-input {
+  width: 130px;
+  height: 32px;
+
+  box-sizing: border-box;
+
+  padding: 5px 8px;
+
+  border: 1px solid #aaa;
+  border-radius: 5px;
+
+  background: white;
+
+  font-size: 14px;
+  text-align: center;
+
+  outline: none;
+
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+
+  cursor: text;
+}
+
+.wall-length-input:focus {
+  border-color: #2196f3;
+}
+
+.wall-apply-buttons {
+  display: flex;
+  gap: 6px;
+
+  margin-top: 6px;
+}
+
+.wall-apply-buttons button {
+  padding: 5px 8px;
+
+  border: 1px solid #ccc;
+  border-radius: 4px;
+
+  background: white;
+
+  font-size: 11px;
+
+  cursor: pointer;
+}
+
+.wall-apply-buttons button:hover {
+  background: #f2f2f2;
+}
+
+.wall-delete-menu {
+  margin-top: 6px;
+}
+
+.wall-delete-menu button {
+  width: 130px;
+  height: 30px;
+
+  border: 1px solid #ddd;
+  border-radius: 5px;
+
+  background: white;
+
+  color: #d32f2f;
+
+  font-size: 12px;
+
+  cursor: pointer;
+
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.12);
+}
+
+.wall-delete-menu button:hover {
+  background: #ffebee;
 }
