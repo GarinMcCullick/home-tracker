@@ -10,7 +10,7 @@ import { Window } from '../models/window';
 import { Wall } from '../models/wall';
 import { Room } from '../models/room';
 import { isPointInsidePolygon } from '../utils/room-geometry';
-
+import { connectWallEndpoint } from '../utils/wall-topology';
 import { getWallPolygon } from '../utils/wall-geometry';
 import {
   getClosestWall,
@@ -39,7 +39,7 @@ export class Editor implements OnInit {
   // --------------------------------------------------
   // Dragging
   // --------------------------------------------------
-
+  draggingOriginalPoint: Point | null = null;
   placingSide: 1 | -1 = 1;
 
   // --------------------------------------------------
@@ -619,8 +619,19 @@ export class Editor implements OnInit {
   startDragging(event: MouseEvent, wallId: string, endpoint: 'start' | 'end') {
     event.stopPropagation();
 
+    const wall = this.propertyService.property.walls.find((wall) => wall.id === wallId);
+
+    if (!wall) {
+      return;
+    }
+
     this.editorStateService.draggingWallId = wallId;
+
     this.editorStateService.draggingEndpoint = endpoint;
+
+    this.draggingOriginalPoint = {
+      ...wall[endpoint],
+    };
   }
 
   dragWallEndpoint(point: Point) {
@@ -833,17 +844,33 @@ export class Editor implements OnInit {
   handleWallClick(event: MouseEvent) {
     const point = this.getSvgPoint(event);
 
+    // --------------------------------
+    // First click = drawing start
+    // --------------------------------
+
     if (!this.editorStateService.drawingStart) {
-      this.editorStateService.drawingStart = snapPoint(
+      const result = connectWallEndpoint(
         this.propertyService.property.walls,
         point,
         this.editorStateService.snapDistance,
       );
 
+      // If the first click landed in the middle of a wall,
+      // split that wall immediately.
+      if (result.split) {
+        this.propertyService.splitWall(result.split.wall.id, result.split.point);
+      }
+
+      this.editorStateService.drawingStart = result.point;
+
       return;
     }
 
-    const finalPoint = getDrawingPoint(
+    // --------------------------------
+    // Second click = drawing end
+    // --------------------------------
+
+    const drawingPoint = getDrawingPoint(
       this.editorStateService.drawingStart,
       point,
       this.propertyService.property.walls,
@@ -852,10 +879,36 @@ export class Editor implements OnInit {
       this.editorStateService.snapDistance,
     );
 
+    const result = connectWallEndpoint(
+      this.propertyService.property.walls,
+      drawingPoint,
+      this.editorStateService.snapDistance,
+    );
+
+    // If the endpoint landed inside an existing wall,
+    // split that wall before creating the new wall.
+    if (result.split) {
+      this.propertyService.splitWall(result.split.wall.id, result.split.point);
+    }
+
+    const finalPoint = result.point;
+
+    // Don't create zero-length walls.
+    if (
+      finalPoint.x === this.editorStateService.drawingStart.x &&
+      finalPoint.y === this.editorStateService.drawingStart.y
+    ) {
+      return;
+    }
+
     const newWall: Wall = {
       id: crypto.randomUUID(),
-      start: this.editorStateService.drawingStart,
-      end: finalPoint,
+      start: {
+        ...this.editorStateService.drawingStart,
+      },
+      end: {
+        ...finalPoint,
+      },
       thickness: 12,
       height: 96,
     };
@@ -964,12 +1017,17 @@ export class Editor implements OnInit {
   // ==================================================
 
   stopDragging() {
-    if (this.editorStateService.draggingWallId) {
-      this.propertyService.wallChanged();
+    if (this.editorStateService.draggingWallId && this.editorStateService.draggingEndpoint) {
+      this.propertyService.resolveWallTopology(
+        this.editorStateService.draggingWallId,
+        this.editorStateService.draggingEndpoint,
+      );
     }
 
     this.editorStateService.draggingWallId = null;
     this.editorStateService.draggingEndpoint = null;
+
+    this.draggingOriginalPoint = null;
 
     this.editorStateService.draggingDoorId = null;
     this.editorStateService.draggingWindowId = null;
