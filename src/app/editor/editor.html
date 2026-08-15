@@ -1,24 +1,32 @@
 <div class="editor" [class]="getCursorClass()">
+  <!-- TOOLBAR -->
   <div class="toolbar">
     <button [class.active]="editorStateService.activeTool === 'select'" (click)="setTool('select')">
       Select
     </button>
+
     <button [class.active]="editorStateService.activeTool === 'wall'" (click)="setTool('wall')">
       Wall
     </button>
+
     <button [class.active]="editorStateService.activeTool === 'room'" (click)="setTool('room')">
       Room
     </button>
+
     <button [class.active]="editorStateService.activeTool === 'door'" (click)="setTool('door')">
       Door
     </button>
+
     <button [class.active]="editorStateService.activeTool === 'window'" (click)="setTool('window')">
       Window
     </button>
+
     <button [class.active]="editorStateService.activeTool === 'sensor'" (click)="setTool('sensor')">
       Sensor
     </button>
+
     <button
+      *ngIf="getSelectedType()"
       [disabled]="
         !editorStateService.selectedWallId &&
         !editorStateService.selectedDoorId &&
@@ -26,14 +34,16 @@
         !editorStateService.selectedRoomId
       "
       (click)="deleteSelected()"
-      *ngIf="getSelectedType()"
     >
       Delete
     </button>
   </div>
 
+  <!-- WORKSPACE -->
   <div class="workspace">
     <div>Walls: {{ propertyService.property.walls.length }}</div>
+
+    <!-- ROOM PROPERTIES -->
     @if (editorStateService.selectedRoomId) {
       <div class="room-properties">
         <input [value]="getSelectedRoom()?.name ?? ''" (input)="renameSelectedRoom($event)" />
@@ -45,6 +55,7 @@
       </div>
     }
 
+    <!-- FLOOR PLAN -->
     <svg
       class="floor-plan"
       viewBox="0 0 1200 800"
@@ -67,6 +78,8 @@
           />
         </pattern>
       </defs>
+
+      <!-- VIEWPORT TRANSFORM -->
       <g
         [attr.transform]="
           'translate(' +
@@ -78,6 +91,7 @@
           ')'
         "
       >
+        <!-- GRID -->
         <rect
           x="-10000"
           y="-10000"
@@ -87,11 +101,14 @@
           pointer-events="none"
         />
 
+        <!-- ================================================== -->
         <!-- ROOMS -->
+        <!-- ================================================== -->
+
         @for (room of propertyService.property.rooms; track room.id) {
           <polygon
+            class="room"
             [attr.points]="room.polygon.map((p) => p.x + ',' + p.y).join(' ')"
-            [style.cursor]="'pointer'"
             fill="#e0e0e0"
             stroke="none"
             [attr.pointer-events]="
@@ -103,8 +120,12 @@
           />
         }
 
+        <!-- ================================================== -->
         <!-- WALLS -->
+        <!-- ================================================== -->
+
         @for (wall of propertyService.property.walls; track wall.id) {
+          <!-- Actual wall -->
           <polygon
             [attr.points]="getWallPoints(wall)"
             [attr.fill]="editorStateService.selectedWallId === wall.id ? '#2196f3' : '#333'"
@@ -113,7 +134,25 @@
             (click)="selectWall(wall.id, $event)"
           />
 
-          <!-- WALL ENDPOINTS -->
+          <!-- Whole-wall drag handle -->
+          @if (
+            editorStateService.activeTool === 'select' &&
+            editorStateService.selectedWallId === wall.id
+          ) {
+            <circle
+              [attr.cx]="(wall.start.x + wall.end.x) / 2"
+              [attr.cy]="(wall.start.y + wall.end.y) / 2"
+              r="7"
+              fill="#ff9800"
+              stroke="white"
+              stroke-width="2"
+              pointer-events="all"
+              class="wall-drag-handle"
+              (mousedown)="startDraggingWall($event, wall.id)"
+            />
+          }
+
+          <!-- Wall endpoints -->
           @if (editorStateService.selectedWallId === wall.id) {
             <circle
               [attr.cx]="wall.start.x"
@@ -135,7 +174,10 @@
           }
         }
 
+        <!-- ================================================== -->
         <!-- ROOM SELECTION OUTLINES -->
+        <!-- ================================================== -->
+
         @for (room of propertyService.property.rooms; track room.id) {
           @if (editorStateService.selectedRoomId === room.id) {
             <polygon
@@ -149,7 +191,10 @@
           }
         }
 
+        <!-- ================================================== -->
         <!-- SNAP INDICATOR -->
+        <!-- ================================================== -->
+
         @if (editorStateService.snapTarget) {
           <circle
             [attr.cx]="editorStateService.snapTarget.x"
@@ -162,7 +207,10 @@
           />
         }
 
+        <!-- ================================================== -->
         <!-- NEW WALL PREVIEW -->
+        <!-- ================================================== -->
+
         @if (
           editorStateService.activeTool === 'wall' &&
           editorStateService.drawingStart &&
@@ -179,8 +227,47 @@
             pointer-events="none"
           />
         }
+        <!-- DRAWING ALIGNMENT GUIDES -->
+        @if (
+          editorStateService.activeTool === 'wall' &&
+          editorStateService.drawingStart &&
+          drawingGuide
+        ) {
+          <!-- HORIZONTAL ALIGNMENT -->
+          @if (drawingGuide.horizontal !== null) {
+            <line
+              x1="-10000"
+              [attr.y1]="drawingGuide.horizontal"
+              x2="10000"
+              [attr.y2]="drawingGuide.horizontal"
+              stroke="#2196f3"
+              stroke-width="2"
+              stroke-dasharray="8 6"
+              opacity="0.65"
+              pointer-events="none"
+            />
+          }
 
+          <!-- VERTICAL ALIGNMENT -->
+          @if (drawingGuide.vertical !== null) {
+            <line
+              [attr.x1]="drawingGuide.vertical"
+              y1="-10000"
+              [attr.x2]="drawingGuide.vertical"
+              y2="10000"
+              stroke="#2196f3"
+              stroke-width="2"
+              stroke-dasharray="8 6"
+              opacity="0.65"
+              pointer-events="none"
+            />
+          }
+        }
+
+        <!-- ================================================== -->
         <!-- DOORS -->
+        <!-- ================================================== -->
+
         @for (door of propertyService.property.doors; track door.id) {
           <g
             [attr.transform]="getDoorTransform(door)"
@@ -224,24 +311,26 @@
             }
           </g>
         }
-        <!-- DOOR PLACEMENT PREVIEW -->
+
+        <!-- Door placement preview -->
         @if (editorStateService.activeTool === 'door' && placementPreview) {
           <g
             [attr.transform]="getPlacementTransform()"
             class="door placement-preview"
             pointer-events="none"
           >
-            <!-- Opening -->
             <rect x="-40" y="-6" width="80" height="12" fill="white" />
 
-            <!-- Door panel -->
             <line x1="-40" y1="0" x2="40" y2="0" stroke="#2196f3" stroke-width="6" />
 
-            <!-- Swing -->
             <path d="M -40 0 A 80 80 0 0 1 40 80" fill="none" stroke="#2196f3" stroke-width="2" />
           </g>
         }
+
+        <!-- ================================================== -->
         <!-- WINDOWS -->
+        <!-- ================================================== -->
+
         @for (window of propertyService.property.windows; track window.id) {
           <g
             [attr.transform]="getWindowTransform(window)"
@@ -269,6 +358,7 @@
 
             <line x1="-50" y1="7" x2="50" y2="7" stroke="#555" stroke-width="3" />
 
+            <!-- Selection indicator -->
             @if (editorStateService.selectedWindowId === window.id) {
               <rect
                 x="-58"
@@ -282,20 +372,18 @@
             }
           </g>
         }
-        <!-- WINDOW PLACEMENT PREVIEW -->
+
+        <!-- Window placement preview -->
         @if (editorStateService.activeTool === 'window' && placementPreview) {
           <g
             [attr.transform]="getPlacementTransform()"
             class="window placement-preview"
             pointer-events="none"
           >
-            <!-- Opening -->
             <rect x="-50" y="-7" width="100" height="14" fill="white" />
 
-            <!-- Glass -->
             <rect x="-45" y="-4" width="90" height="8" fill="#60a5fa" />
 
-            <!-- Frame -->
             <line x1="-50" y1="-7" x2="50" y2="-7" stroke="#2196f3" stroke-width="3" />
 
             <line x1="-50" y1="7" x2="50" y2="7" stroke="#2196f3" stroke-width="3" />
@@ -303,19 +391,29 @@
         }
       </g>
     </svg>
-    @if (editorStateService.selectedWallId && getSelectedWall(); as wall) {
+
+    <!-- ================================================== -->
+    <!-- WALL DIMENSION EDITOR -->
+    <!-- Hidden while dragging so it cannot interfere -->
+    <!-- with mouse movement. -->
+    <!-- ================================================== -->
+
+    @if (
+      editorStateService.selectedWallId && !editorStateService.draggingWallId && getSelectedWall();
+      as wall
+    ) {
       @if (wallDimensionPosition; as position) {
         <div
           class="wall-dimension-editor"
           [style.left.px]="position.x"
           [style.top.px]="position.y + 20"
-          (click)="$event.stopPropagation()"
-          (mousedown)="$event.stopPropagation()"
         >
           <div class="wall-dimension-ui">
             <input
               class="wall-length-input"
               [(ngModel)]="wallLengthInput"
+              (mousedown)="$event.stopPropagation()"
+              (click)="$event.stopPropagation()"
               (focus)="onWallDimensionFocus()"
               (blur)="onWallDimensionBlur()"
               (keydown.enter)="applyWallLength(wallLengthInput, 'end')"
@@ -323,7 +421,11 @@
           </div>
 
           @if (wallDimensionFocused) {
-            <div class="wall-apply-buttons">
+            <div
+              class="wall-apply-buttons"
+              (mousedown)="$event.stopPropagation()"
+              (click)="$event.stopPropagation()"
+            >
               <button
                 type="button"
                 (mousedown)="$event.preventDefault()"
@@ -342,7 +444,11 @@
             </div>
           }
 
-          <div class="wall-delete-menu">
+          <div
+            class="wall-delete-menu"
+            (mousedown)="$event.stopPropagation()"
+            (click)="$event.stopPropagation()"
+          >
             <button type="button" (click)="deleteSelectedWall()">🗑 Delete Wall</button>
           </div>
         </div>

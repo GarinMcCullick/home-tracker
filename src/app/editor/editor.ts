@@ -9,22 +9,28 @@ import { Door } from '../models/door';
 import { Window } from '../models/window';
 import { Wall } from '../models/wall';
 import { Room } from '../models/room';
+
 import { isPointInsidePolygon } from '../utils/room-geometry';
 import { connectWallEndpoint } from '../utils/wall-topology';
 import { getWallPolygon } from '../utils/wall-geometry';
+
 import {
   getClosestWall,
   snapAngle,
   snapPoint,
   getWallSide,
   getDrawingPoint,
+  getDrawingGuide,
 } from '../utils/editor-geometry';
+
 import {
   getDoorTransform,
   getWindowTransform,
   getPlacementTransform as buildPlacementTransform,
 } from '../utils/element-transforms';
+
 import { PlacementPreview, getPlacementPreview } from '../utils/placement-utils';
+
 import { calculateZoom, getSvgPoint } from '../utils/viewport';
 import { getCursorClass } from '../utils/editor-utils';
 
@@ -36,15 +42,20 @@ import { getCursorClass } from '../utils/editor-utils';
   styleUrl: './editor.scss',
 })
 export class Editor implements OnInit {
-  // --------------------------------------------------
-  // Dragging
-  // --------------------------------------------------
-  draggingOriginalPoint: Point | null = null;
-  placingSide: 1 | -1 = 1;
+  // ==================================================
+  // DRAGGING
+  // ==================================================
 
-  // --------------------------------------------------
-  // Viewport stuff
-  // --------------------------------------------------
+  draggingOriginalPoint: Point | null = null;
+  drawingGuide: {
+    horizontal: number | null;
+    vertical: number | null;
+  } | null = null;
+
+  // ==================================================
+  // VIEWPORT
+  // ==================================================
+
   onWheel(event: WheelEvent) {
     event.preventDefault();
 
@@ -60,6 +71,7 @@ export class Editor implements OnInit {
     this.editorStateService.panX = result.panX;
     this.editorStateService.panY = result.panY;
   }
+
   onCanvasMouseDown(event: MouseEvent) {
     // Middle mouse = always pan
     if (event.button === 1) {
@@ -82,6 +94,7 @@ export class Editor implements OnInit {
       this.startPanning(event);
     }
   }
+
   onCanvasMouseUp(event: MouseEvent) {
     if (this.editorStateService.isPanning) {
       this.editorStateService.isPanning = false;
@@ -89,6 +102,74 @@ export class Editor implements OnInit {
     }
 
     this.stopDragging();
+  }
+
+  @HostListener('window:mouseup', ['$event'])
+  onWindowMouseUp(event: MouseEvent) {
+    if (this.editorStateService.isPanning) {
+      this.editorStateService.isPanning = false;
+      return;
+    }
+
+    this.stopDragging();
+  }
+
+  @HostListener('window:mousemove', ['$event'])
+  onWindowMouseMove(event: MouseEvent) {
+    if (
+      !this.editorStateService.draggingWallId &&
+      !this.editorStateService.draggingDoorId &&
+      !this.editorStateService.draggingWindowId &&
+      !this.editorStateService.isPanning
+    ) {
+      return;
+    }
+
+    const point = this.getSvgPointFromWindow(event);
+
+    if (this.editorStateService.isPanning) {
+      const dx = event.clientX - this.editorStateService.panStart.x;
+      const dy = event.clientY - this.editorStateService.panStart.y;
+
+      this.editorStateService.panX = this.editorStateService.panOrigin.x + dx;
+
+      this.editorStateService.panY = this.editorStateService.panOrigin.y + dy;
+
+      return;
+    }
+
+    if (this.editorStateService.draggingWallId) {
+      this.dragWall(point);
+      return;
+    }
+
+    if (this.editorStateService.draggingDoorId) {
+      this.dragDoor(point);
+      return;
+    }
+
+    if (this.editorStateService.draggingWindowId) {
+      this.dragWindow(point);
+    }
+  }
+
+  getSvgPointFromWindow(event: MouseEvent): Point {
+    const svg = document.querySelector('.floor-plan') as SVGSVGElement | null;
+
+    if (!svg) {
+      return {
+        x: 0,
+        y: 0,
+      };
+    }
+
+    return getSvgPoint(
+      event,
+      svg,
+      this.editorStateService.panX,
+      this.editorStateService.panY,
+      this.editorStateService.zoom,
+    );
   }
 
   private startPanning(event: MouseEvent) {
@@ -107,9 +188,9 @@ export class Editor implements OnInit {
     };
   }
 
-  // --------------------------------------------------
-  // Editor state
-  // --------------------------------------------------
+  // ==================================================
+  // EDITOR STATE
+  // ==================================================
 
   constructor(
     public propertyService: PropertyService,
@@ -126,11 +207,15 @@ export class Editor implements OnInit {
 
   setTool(tool: EditorTool) {
     this.editorStateService.activeTool = tool;
+    this.drawingGuide = null;
 
     this.editorStateService.drawingStart = null;
 
     this.editorStateService.draggingWallId = null;
+    this.editorStateService.draggingWallMove = false;
     this.editorStateService.draggingEndpoint = null;
+
+    this.draggingOriginalPoint = null;
 
     this.editorStateService.draggingDoorId = null;
     this.editorStateService.draggingWindowId = null;
@@ -177,20 +262,21 @@ export class Editor implements OnInit {
   // ==================================================
   // WALL DIMENSIONS
   // ==================================================
+
   wallLengthInput = '';
   wallDimensionFocused = false;
   wallDimensionPosition: Point | null = null;
+
   onWallDimensionFocus() {
     this.wallDimensionFocused = true;
   }
 
   onWallDimensionBlur() {
-    // Delay this slightly so clicking Apply Left/Right
-    // doesn't immediately hide the buttons.
     setTimeout(() => {
       this.wallDimensionFocused = false;
     }, 100);
   }
+
   getSelectedWall(): Wall | undefined {
     const wallId = this.editorStateService.selectedWallId;
 
@@ -206,7 +292,6 @@ export class Editor implements OnInit {
   }
 
   formatWallLength(length: number): string {
-    // Our editor units are inches.
     const totalInches = length;
 
     const feet = Math.floor(totalInches / 12);
@@ -225,17 +310,6 @@ export class Editor implements OnInit {
     if (!input) {
       return null;
     }
-
-    /*
-     * Supports:
-     *
-     * 12
-     * 12'
-     * 12' 6"
-     * 12'6"
-     * 12' 6.5"
-     * 150"
-     */
 
     const feetMatch = input.match(/(\d+(?:\.\d+)?)\s*'/);
     const inchMatch = input.match(/(\d+(?:\.\d+)?)\s*"?$/);
@@ -301,49 +375,6 @@ export class Editor implements OnInit {
     this.propertyService.wallChanged();
   }
 
-  getWallDimensionPosition(wall: Wall): Point {
-    const centerX = (wall.start.x + wall.end.x) / 2;
-    const centerY = (wall.start.y + wall.end.y) / 2;
-
-    const dx = wall.end.x - wall.start.x;
-    const dy = wall.end.y - wall.start.y;
-
-    const length = Math.hypot(dx, dy);
-
-    if (length === 0) {
-      return {
-        x: centerX,
-        y: centerY - 25,
-      };
-    }
-
-    // Perpendicular offset
-    const offset = 25;
-
-    return {
-      x: centerX - (dy / length) * offset,
-      y: centerY + (dx / length) * offset,
-    };
-  }
-  getWallDimensionTransform(wall: Wall): string {
-    const position = this.getWallDimensionPosition(wall);
-
-    return `translate(${position.x} ${position.y})`;
-  }
-
-  getWallDimensionRotation(wall: Wall): number {
-    const dx = wall.end.x - wall.start.x;
-    const dy = wall.end.y - wall.start.y;
-
-    let angle = Math.atan2(dy, dx) * (180 / Math.PI);
-
-    // Keep the text readable instead of upside down.
-    if (angle > 90 || angle < -90) {
-      angle += 180;
-    }
-
-    return angle;
-  }
   // ==================================================
   // SELECTION
   // ==================================================
@@ -366,7 +397,6 @@ export class Editor implements OnInit {
       this.wallLengthInput = this.formatWallLength(this.getWallLength(wall));
     }
 
-    // Store the actual screen position where the wall was clicked.
     if (event) {
       const svg = (event.currentTarget as SVGElement).ownerSVGElement;
 
@@ -460,6 +490,7 @@ export class Editor implements OnInit {
     }
 
     this.propertyService.removeDoor(this.editorStateService.selectedDoorId);
+
     this.editorStateService.selectedDoorId = null;
   }
 
@@ -469,6 +500,7 @@ export class Editor implements OnInit {
     }
 
     this.propertyService.removeWindow(this.editorStateService.selectedWindowId);
+
     this.editorStateService.selectedWindowId = null;
   }
 
@@ -616,8 +648,13 @@ export class Editor implements OnInit {
   // WALL DRAGGING
   // ==================================================
 
-  startDragging(event: MouseEvent, wallId: string, endpoint: 'start' | 'end') {
+  startDraggingWall(event: MouseEvent, wallId: string) {
     event.stopPropagation();
+    event.preventDefault();
+
+    if (this.editorStateService.activeTool !== 'select') {
+      return;
+    }
 
     const wall = this.propertyService.property.walls.find((wall) => wall.id === wallId);
 
@@ -625,17 +662,52 @@ export class Editor implements OnInit {
       return;
     }
 
-    this.editorStateService.draggingWallId = wallId;
+    this.editorStateService.selectedWallId = wallId;
+    this.editorStateService.selectedDoorId = null;
+    this.editorStateService.selectedWindowId = null;
+    this.editorStateService.selectedRoomId = null;
 
+    this.wallLengthInput = this.formatWallLength(this.getWallLength(wall));
+
+    this.editorStateService.draggingWallId = wallId;
+    this.editorStateService.draggingEndpoint = null;
+    this.editorStateService.draggingWallMove = true;
+
+    this.draggingOriginalPoint = this.getSvgPoint(event);
+  }
+
+  startDragging(event: MouseEvent, wallId: string, endpoint: 'start' | 'end') {
+    event.stopPropagation();
+    event.preventDefault();
+
+    if (this.editorStateService.activeTool !== 'select') {
+      return;
+    }
+
+    const wall = this.propertyService.property.walls.find((wall) => wall.id === wallId);
+
+    if (!wall) {
+      return;
+    }
+
+    this.editorStateService.selectedWallId = wallId;
+    this.editorStateService.selectedDoorId = null;
+    this.editorStateService.selectedWindowId = null;
+    this.editorStateService.selectedRoomId = null;
+
+    this.wallLengthInput = this.formatWallLength(this.getWallLength(wall));
+
+    this.editorStateService.draggingWallId = wallId;
     this.editorStateService.draggingEndpoint = endpoint;
+    this.editorStateService.draggingWallMove = false;
 
     this.draggingOriginalPoint = {
       ...wall[endpoint],
     };
   }
 
-  dragWallEndpoint(point: Point) {
-    if (!this.editorStateService.draggingWallId || !this.editorStateService.draggingEndpoint) {
+  dragWall(point: Point) {
+    if (!this.editorStateService.draggingWallId) {
       return;
     }
 
@@ -646,6 +718,38 @@ export class Editor implements OnInit {
     if (!wall) {
       return;
     }
+
+    // --------------------------------
+    // Moving the entire wall
+    // --------------------------------
+
+    if (!this.editorStateService.draggingEndpoint) {
+      if (!this.draggingOriginalPoint) {
+        return;
+      }
+
+      const dx = point.x - this.draggingOriginalPoint.x;
+      const dy = point.y - this.draggingOriginalPoint.y;
+
+      wall.start = {
+        x: wall.start.x + dx,
+        y: wall.start.y + dy,
+      };
+
+      wall.end = {
+        x: wall.end.x + dx,
+        y: wall.end.y + dy,
+      };
+
+      this.draggingOriginalPoint = point;
+      this.editorStateService.snapTarget = null;
+
+      return;
+    }
+
+    // --------------------------------
+    // Moving one endpoint
+    // --------------------------------
 
     let dragPoint = point;
 
@@ -663,7 +767,7 @@ export class Editor implements OnInit {
       this.editorStateService.draggingWallId,
     );
 
-    if (snappedPoint.x !== point.x || snappedPoint.y !== point.y) {
+    if (snappedPoint.x !== dragPoint.x || snappedPoint.y !== dragPoint.y) {
       this.editorStateService.snapTarget = snappedPoint;
     } else {
       this.editorStateService.snapTarget = null;
@@ -681,17 +785,9 @@ export class Editor implements OnInit {
 
   onMouseMove(event: MouseEvent) {
     const point = this.getSvgPoint(event);
-    const drawingPoint = getDrawingPoint(
-      this.editorStateService.drawingStart ?? point,
-      point,
-      this.propertyService.property.walls,
-      this.editorStateService.shiftPressed,
-      this.editorStateService.angleSnap,
-      this.editorStateService.snapDistance,
-    );
 
     // --------------------------------
-    // viewport panning
+    // Viewport panning
     // --------------------------------
 
     if (this.editorStateService.isPanning) {
@@ -740,13 +836,53 @@ export class Editor implements OnInit {
     // --------------------------------
 
     if (this.editorStateService.activeTool === 'wall' && this.editorStateService.drawingStart) {
-      this.editorStateService.mousePosition = drawingPoint;
+      const drawingStart = this.editorStateService.drawingStart;
 
-      if (drawingPoint.x !== point.x || drawingPoint.y !== point.y) {
-        this.editorStateService.snapTarget = drawingPoint;
+      // --------------------------------
+      // Clean geometry / angle snapping
+      // --------------------------------
+
+      const drawingPoint = getDrawingPoint(
+        drawingStart,
+        point,
+        this.propertyService.property.walls,
+        this.editorStateService.shiftPressed,
+        this.editorStateService.angleSnap,
+        this.editorStateService.snapDistance,
+      );
+
+      // --------------------------------
+      // Architectural alignment guide
+      // --------------------------------
+
+      this.drawingGuide = getDrawingGuide(
+        point,
+        this.propertyService.property.walls,
+        this.editorStateService.snapDistance,
+        drawingStart,
+      );
+
+      // --------------------------------
+      // Snap indicator
+      // --------------------------------
+
+      const snappedPoint = snapPoint(
+        this.propertyService.property.walls,
+        drawingPoint,
+        this.editorStateService.snapDistance,
+      );
+
+      if (snappedPoint.x !== drawingPoint.x || snappedPoint.y !== drawingPoint.y) {
+        this.editorStateService.snapTarget = snappedPoint;
       } else {
         this.editorStateService.snapTarget = null;
       }
+
+      // --------------------------------
+      // Preview line endpoint
+      // --------------------------------
+
+      this.editorStateService.mousePosition = this.editorStateService.snapTarget ?? drawingPoint;
 
       return;
     }
@@ -756,32 +892,39 @@ export class Editor implements OnInit {
     // --------------------------------
 
     this.editorStateService.mousePosition = point;
+    this.drawingGuide = null;
 
-    // --------------------------------
     // Existing wall endpoint dragging
-    // --------------------------------
-
     if (!this.editorStateService.draggingWallId || !this.editorStateService.draggingEndpoint) {
       this.editorStateService.snapTarget = null;
       return;
     }
-
-    this.dragWallEndpoint(point);
   }
 
   getSvgPoint(event: MouseEvent): Point {
+    const target = event.currentTarget as SVGElement;
+
+    const svg = target instanceof SVGSVGElement ? target : target.ownerSVGElement;
+
+    if (!svg) {
+      return {
+        x: 0,
+        y: 0,
+      };
+    }
+
     return getSvgPoint(
       event,
-      event.currentTarget as SVGSVGElement,
+      svg,
       this.editorStateService.panX,
       this.editorStateService.panY,
       this.editorStateService.zoom,
     );
   }
 
-  // --------------------------------------------------
-  // Placement preview
-  // --------------------------------------------------
+  // ==================================================
+  // PLACEMENT PREVIEW
+  // ==================================================
 
   placementPreview: PlacementPreview | null = null;
 
@@ -844,10 +987,6 @@ export class Editor implements OnInit {
   handleWallClick(event: MouseEvent) {
     const point = this.getSvgPoint(event);
 
-    // --------------------------------
-    // First click = drawing start
-    // --------------------------------
-
     if (!this.editorStateService.drawingStart) {
       const result = connectWallEndpoint(
         this.propertyService.property.walls,
@@ -855,8 +994,6 @@ export class Editor implements OnInit {
         this.editorStateService.snapDistance,
       );
 
-      // If the first click landed in the middle of a wall,
-      // split that wall immediately.
       if (result.split) {
         this.propertyService.splitWall(result.split.wall.id, result.split.point);
       }
@@ -865,10 +1002,6 @@ export class Editor implements OnInit {
 
       return;
     }
-
-    // --------------------------------
-    // Second click = drawing end
-    // --------------------------------
 
     const drawingPoint = getDrawingPoint(
       this.editorStateService.drawingStart,
@@ -885,15 +1018,12 @@ export class Editor implements OnInit {
       this.editorStateService.snapDistance,
     );
 
-    // If the endpoint landed inside an existing wall,
-    // split that wall before creating the new wall.
     if (result.split) {
       this.propertyService.splitWall(result.split.wall.id, result.split.point);
     }
 
     const finalPoint = result.point;
 
-    // Don't create zero-length walls.
     if (
       finalPoint.x === this.editorStateService.drawingStart.x &&
       finalPoint.y === this.editorStateService.drawingStart.y
@@ -1017,7 +1147,19 @@ export class Editor implements OnInit {
   // ==================================================
 
   stopDragging() {
-    if (this.editorStateService.draggingWallId && this.editorStateService.draggingEndpoint) {
+    // Whole wall drag
+    if (this.editorStateService.draggingWallId && this.editorStateService.draggingWallMove) {
+      const wallId = this.editorStateService.draggingWallId;
+
+      this.propertyService.wallChanged();
+
+      this.propertyService.resolveWallTopology(wallId, 'start');
+
+      this.propertyService.resolveWallTopology(wallId, 'end');
+    }
+
+    // Endpoint drag
+    else if (this.editorStateService.draggingWallId && this.editorStateService.draggingEndpoint) {
       this.propertyService.resolveWallTopology(
         this.editorStateService.draggingWallId,
         this.editorStateService.draggingEndpoint,
@@ -1025,6 +1167,7 @@ export class Editor implements OnInit {
     }
 
     this.editorStateService.draggingWallId = null;
+    this.editorStateService.draggingWallMove = false;
     this.editorStateService.draggingEndpoint = null;
 
     this.draggingOriginalPoint = null;
@@ -1056,7 +1199,6 @@ export class Editor implements OnInit {
       this.editorStateService.spacePressed = true;
     }
 
-    // Don't let editor shortcuts fire while typing in an input.
     const target = event.target as HTMLElement;
 
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
@@ -1076,6 +1218,7 @@ export class Editor implements OnInit {
     if (event.key === 'Shift') {
       this.editorStateService.shiftPressed = false;
     }
+
     if (event.code === 'Space') {
       this.editorStateService.spacePressed = false;
     }

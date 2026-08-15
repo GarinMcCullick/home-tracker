@@ -88,22 +88,23 @@
 
 .wall-dimension-editor {
   position: absolute;
-
   transform: translate(-50%, 25%);
-
   z-index: 1000;
 
   display: flex;
   flex-direction: column;
   align-items: center;
 
-  pointer-events: auto;
+  // The dimension UI itself cannot block wall dragging
+  pointer-events: none;
 }
 
 .wall-dimension-ui {
   display: flex;
   align-items: center;
   justify-content: center;
+
+  pointer-events: none;
 }
 
 .wall-length-input {
@@ -111,7 +112,6 @@
   height: 32px;
 
   box-sizing: border-box;
-
   padding: 5px 8px;
 
   border: 1px solid #aaa;
@@ -121,12 +121,14 @@
 
   font-size: 14px;
   text-align: center;
-
   outline: none;
 
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 
   cursor: text;
+
+  // Re-enable the actual input
+  pointer-events: auto;
 }
 
 .wall-length-input:focus {
@@ -138,6 +140,8 @@
   gap: 6px;
 
   margin-top: 6px;
+
+  pointer-events: none;
 }
 
 .wall-apply-buttons button {
@@ -149,8 +153,10 @@
   background: white;
 
   font-size: 11px;
-
   cursor: pointer;
+
+  // Re-enable buttons
+  pointer-events: auto;
 }
 
 .wall-apply-buttons button:hover {
@@ -159,6 +165,8 @@
 
 .wall-delete-menu {
   margin-top: 6px;
+
+  pointer-events: none;
 }
 
 .wall-delete-menu button {
@@ -169,14 +177,15 @@
   border-radius: 5px;
 
   background: white;
-
   color: #d32f2f;
 
   font-size: 12px;
-
   cursor: pointer;
 
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.12);
+
+  // Re-enable delete button
+  pointer-events: auto;
 }
 
 .wall-delete-menu button:hover {
