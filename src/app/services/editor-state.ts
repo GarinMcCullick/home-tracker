@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 
-export type EditorTool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'sensor';
+export type EditorTool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'device';
 
 export type Point = {
   x: number;
@@ -25,7 +25,7 @@ export class EditorStateService {
   selectedRoomId: string | null = null;
   selectedDoorId: string | null = null;
   selectedWindowId: string | null = null;
-
+  selectedDeviceId: string | null = null;
   // --------------------------------------------------
   // Dragging
   // --------------------------------------------------
@@ -41,6 +41,7 @@ export class EditorStateService {
   draggingDoorId: string | null = null;
   draggingWindowId: string | null = null;
 
+  draggingDeviceId: string | null = null;
   // --------------------------------------------------
   // Viewport
   // --------------------------------------------------

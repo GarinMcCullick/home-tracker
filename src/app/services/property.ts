@@ -8,6 +8,7 @@ import { splitWallAtPoint } from '../utils/wall-topology';
 import { RoomService } from './room';
 import { Point } from '../models/room';
 import { connectWallEndpoint, mergeCollinearWalls } from '../utils/wall-topology';
+import { SmartDevice } from '../models/smart-device';
 
 @Injectable({
   providedIn: 'root',
@@ -56,6 +57,7 @@ export class PropertyService {
     rooms: [],
     doors: [],
     windows: [],
+    devices: [],
   };
 
   recalculateRooms() {
@@ -374,5 +376,16 @@ export class PropertyService {
         Math.hypot(point.x - b.start.x, point.y - b.start.y) <= tolerance ||
         Math.hypot(point.x - b.end.x, point.y - b.end.y) <= tolerance,
     );
+  }
+  addDevice(device: SmartDevice) {
+    this.property.devices.push(device);
+  }
+
+  removeDevice(deviceId: string) {
+    this.property.devices = this.property.devices.filter((device) => device.id !== deviceId);
+  }
+
+  deviceChanged() {
+    this.recalculateRooms();
   }
 }
