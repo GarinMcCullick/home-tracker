@@ -21,8 +21,8 @@
       Window
     </button>
 
-    <button [class.active]="editorStateService.activeTool === 'sensor'" (click)="setTool('sensor')">
-      Sensor
+    <button [class.active]="editorStateService.activeTool === 'device'" (click)="setTool('device')">
+      Device
     </button>
 
     <button
@@ -31,7 +31,8 @@
         !editorStateService.selectedWallId &&
         !editorStateService.selectedDoorId &&
         !editorStateService.selectedWindowId &&
-        !editorStateService.selectedRoomId
+        !editorStateService.selectedRoomId &&
+        !editorStateService.selectedDeviceId
       "
       (click)="deleteSelected()"
     >
@@ -384,6 +385,86 @@
 
             <line x1="-50" y1="7" x2="50" y2="7" stroke="#2196f3" stroke-width="3" />
           </g>
+        }
+        <!-- ================================================== -->
+        <!-- SMART DEVICES -->
+        <!-- ================================================== -->
+
+        @for (device of propertyService.property.devices; track device.id) {
+          <g
+            [attr.transform]="
+              'translate(' +
+              device.position.x +
+              ' ' +
+              device.position.y +
+              ') rotate(' +
+              device.rotation +
+              ')'
+            "
+            class="smart-device"
+            [attr.pointer-events]="editorStateService.activeTool === 'select' ? 'auto' : 'none'"
+            (click)="selectDevice(device.id, $event)"
+            (mousedown)="startDraggingDevice($event, device.id)"
+          >
+            @if (editorStateService.selectedDeviceId === device.id) {
+              <g
+                class="device-rotation-handle"
+                pointer-events="all"
+                (mousedown)="startRotatingDevice($event, device.id)"
+              >
+                <line x1="0" y1="-21" x2="0" y2="-38" stroke="#2196f3" stroke-width="3" />
+
+                <circle cx="0" cy="-42" r="7" fill="#2196f3" stroke="white" stroke-width="2" />
+              </g>
+            }
+            <!-- Device body -->
+            <circle
+              r="8"
+              [attr.fill]="
+                editorStateService.selectedDeviceId === device.id ? '#2196f3' : '#7c3aed'
+              "
+              stroke="white"
+              stroke-width="2"
+            />
+
+            <!-- Device direction -->
+            <line
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="-12"
+              stroke="orange"
+              stroke-width="3"
+              stroke-linecap="round"
+            />
+
+            <!-- Selection ring -->
+            @if (editorStateService.selectedDeviceId === device.id) {
+              <circle
+                r="21"
+                fill="none"
+                stroke="#2196f3"
+                stroke-width="3"
+                stroke-dasharray="5 4"
+                pointer-events="none"
+              />
+            }
+          </g>
+          <!-- ================================================== -->
+          <!-- APOLLO MM WAVE TARGETS -->
+          <!-- ================================================== -->
+
+          @if (apolloTargets.target1.x !== null && apolloTargets.target1.y !== null) {
+            <circle
+              [attr.cx]="apolloTarget1Position.x"
+              [attr.cy]="apolloTarget1Position.y"
+              r="8"
+              fill="#ef4444"
+              stroke="white"
+              stroke-width="2"
+              pointer-events="none"
+            />
+          }
         }
       </g>
     </svg>

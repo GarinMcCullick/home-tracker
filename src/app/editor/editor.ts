@@ -1,9 +1,10 @@
-import { Component, HostListener, OnInit } from '@angular/core';
+import { Component, HostListener, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-
+import { SmartDevice, SmartDeviceType } from '../models/smart-device';
 import { PropertyService } from '../services/property';
 import { EditorStateService, EditorTool, Point } from '../services/editor-state';
+import { ApolloTargets, HomeAssistantService } from '../services/home-assistant';
 
 import { Door } from '../models/door';
 import { Window } from '../models/window';
@@ -42,6 +43,11 @@ import { getCursorClass } from '../utils/editor-utils';
   styleUrl: './editor.scss',
 })
 export class Editor implements OnInit {
+  apolloTargets: ApolloTargets = {
+    target1: { x: null, y: null },
+    target2: { x: null, y: null },
+    target3: { x: null, y: null },
+  };
   // ==================================================
   // DRAGGING
   // ==================================================
@@ -120,6 +126,8 @@ export class Editor implements OnInit {
       !this.editorStateService.draggingWallId &&
       !this.editorStateService.draggingDoorId &&
       !this.editorStateService.draggingWindowId &&
+      !this.editorStateService.draggingDeviceId &&
+      !this.draggingDeviceRotation &&
       !this.editorStateService.isPanning
     ) {
       return;
@@ -150,6 +158,19 @@ export class Editor implements OnInit {
 
     if (this.editorStateService.draggingWindowId) {
       this.dragWindow(point);
+    }
+
+    if (this.editorStateService.draggingDeviceId) {
+      this.dragDevice(point);
+      return;
+    }
+    if (this.draggingDeviceRotation) {
+      this.rotateDevice(point);
+      return;
+    }
+    if (this.draggingDeviceRotation) {
+      this.rotateDevice(point);
+      return;
     }
   }
 
@@ -195,10 +216,50 @@ export class Editor implements OnInit {
   constructor(
     public propertyService: PropertyService,
     public editorStateService: EditorStateService,
+    public homeAssistantService: HomeAssistantService,
+    private cdr: ChangeDetectorRef,
   ) {}
 
-  ngOnInit() {
+  async ngOnInit() {
     this.propertyService.recalculateRooms();
+    await this.homeAssistantService.connect();
+    this.homeAssistantService.apolloTargets$.subscribe((targets) => {
+      this.apolloTargets = targets;
+
+      this.cdr.markForCheck();
+
+      console.log('APOLLO:', targets.target1);
+    });
+  }
+
+  get apolloTarget1Position(): Point {
+    const device = this.propertyService.property.devices.find((d) => d.type === 'mmwave');
+
+    if (!device) {
+      return { x: 0, y: 0 };
+    }
+
+    // Raw LD2450 position relative to the sensor
+    const x = this.apolloTargets.target1.x ?? 0;
+    const y = this.apolloTargets.target1.y ?? 0;
+
+    // Mirror the LD2450 coordinate system to match the floor plan.
+    const sensorX = -x;
+    const sensorY = -y;
+
+    // Device rotation is stored in degrees.
+    const angle = (device.rotation * Math.PI) / 180;
+
+    // Rotate sensor-relative coordinates with the device.
+    const rotatedX = sensorX * Math.cos(angle) - sensorY * Math.sin(angle);
+
+    const rotatedY = sensorX * Math.sin(angle) + sensorY * Math.cos(angle);
+
+    // Convert to floor-plan coordinates.
+    return {
+      x: device.position.x + rotatedX,
+      y: device.position.y + rotatedY,
+    };
   }
 
   // ==================================================
@@ -214,6 +275,7 @@ export class Editor implements OnInit {
     this.editorStateService.draggingWallId = null;
     this.editorStateService.draggingWallMove = false;
     this.editorStateService.draggingEndpoint = null;
+    this.editorStateService.draggingDeviceId = null;
 
     this.draggingOriginalPoint = null;
 
@@ -223,13 +285,14 @@ export class Editor implements OnInit {
     this.editorStateService.snapTarget = null;
 
     this.placementPreview = null;
+    this.draggingDeviceRotation = false;
   }
 
   getCursorClass(): string {
     return getCursorClass(this.editorStateService.activeTool);
   }
 
-  getSelectedType(): 'wall' | 'door' | 'window' | 'room' | null {
+  getSelectedType(): 'wall' | 'door' | 'window' | 'room' | 'device' | null {
     if (this.editorStateService.selectedWallId) {
       return 'wall';
     }
@@ -244,6 +307,10 @@ export class Editor implements OnInit {
 
     if (this.editorStateService.selectedRoomId) {
       return 'room';
+    }
+
+    if (this.editorStateService.selectedDeviceId) {
+      return 'device';
     }
 
     return null;
@@ -437,6 +504,21 @@ export class Editor implements OnInit {
     this.editorStateService.selectedRoomId = null;
   }
 
+  selectDevice(deviceId: string, event: MouseEvent) {
+    event.stopPropagation();
+
+    if (this.editorStateService.activeTool !== 'select') {
+      return;
+    }
+
+    this.editorStateService.selectedDeviceId = deviceId;
+
+    this.editorStateService.selectedWallId = null;
+    this.editorStateService.selectedDoorId = null;
+    this.editorStateService.selectedWindowId = null;
+    this.editorStateService.selectedRoomId = null;
+  }
+
   selectRoom(roomId: string, event?: MouseEvent) {
     event?.stopPropagation();
 
@@ -458,6 +540,7 @@ export class Editor implements OnInit {
     this.editorStateService.selectedRoomId = null;
     this.editorStateService.selectedDoorId = null;
     this.editorStateService.selectedWindowId = null;
+    this.editorStateService.selectedDeviceId = null;
 
     this.wallLengthInput = '';
     this.wallDimensionFocused = false;
@@ -482,6 +565,10 @@ export class Editor implements OnInit {
     if (this.editorStateService.selectedWallId) {
       this.deleteSelectedWall();
     }
+    if (this.editorStateService.selectedDeviceId) {
+      this.deleteSelectedDevice();
+      return;
+    }
   }
 
   deleteSelectedDoor() {
@@ -502,6 +589,17 @@ export class Editor implements OnInit {
     this.propertyService.removeWindow(this.editorStateService.selectedWindowId);
 
     this.editorStateService.selectedWindowId = null;
+  }
+  deleteSelectedDevice() {
+    const deviceId = this.editorStateService.selectedDeviceId;
+
+    if (!deviceId) {
+      return;
+    }
+
+    this.propertyService.removeDevice(deviceId);
+
+    this.editorStateService.selectedDeviceId = null;
   }
 
   deleteSelectedWall() {
@@ -540,6 +638,104 @@ export class Editor implements OnInit {
     }
 
     room.name = input.value;
+  }
+
+  // ==================================================
+  // Device Rotating
+  // ==================================================
+
+  startRotatingDevice(event: MouseEvent, deviceId: string) {
+    event.stopPropagation();
+    event.preventDefault();
+
+    if (this.editorStateService.activeTool !== 'select') {
+      return;
+    }
+
+    const device = this.propertyService.property.devices.find((device) => device.id === deviceId);
+
+    if (!device) {
+      return;
+    }
+
+    this.editorStateService.selectedDeviceId = deviceId;
+
+    this.editorStateService.selectedWallId = null;
+    this.editorStateService.selectedDoorId = null;
+    this.editorStateService.selectedWindowId = null;
+    this.editorStateService.selectedRoomId = null;
+
+    this.draggingDeviceRotation = true;
+  }
+
+  rotateDevice(point: Point) {
+    const device = this.propertyService.property.devices.find(
+      (device) => device.id === this.editorStateService.selectedDeviceId,
+    );
+
+    if (!device) {
+      return;
+    }
+
+    const dx = point.x - device.position.x;
+    const dy = point.y - device.position.y;
+
+    let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+
+    if (angle < 0) {
+      angle += 360;
+    }
+
+    if (this.editorStateService.shiftPressed) {
+      angle = Math.round(angle / 45) * 45;
+    }
+
+    device.rotation = angle % 360;
+  }
+
+  // ==================================================
+  // Device Dragging
+  // ==================================================
+
+  draggingDeviceRotation = false;
+
+  startDraggingDevice(event: MouseEvent, deviceId: string) {
+    event.stopPropagation();
+    event.preventDefault();
+
+    if (this.editorStateService.activeTool !== 'select') {
+      return;
+    }
+
+    const device = this.propertyService.property.devices.find((device) => device.id === deviceId);
+
+    if (!device) {
+      return;
+    }
+
+    this.editorStateService.selectedDeviceId = deviceId;
+
+    this.editorStateService.selectedWallId = null;
+    this.editorStateService.selectedDoorId = null;
+    this.editorStateService.selectedWindowId = null;
+    this.editorStateService.selectedRoomId = null;
+
+    this.editorStateService.draggingDeviceId = deviceId;
+  }
+
+  dragDevice(point: Point) {
+    const device = this.propertyService.property.devices.find(
+      (device) => device.id === this.editorStateService.draggingDeviceId,
+    );
+
+    if (!device) {
+      return;
+    }
+
+    device.position = {
+      x: point.x,
+      y: point.y,
+    };
   }
 
   // ==================================================
@@ -1008,8 +1204,8 @@ export class Editor implements OnInit {
         this.handleWindowClick(event);
         break;
 
-      case 'sensor':
-        this.handleSensorClick(event);
+      case 'device':
+        this.handleDeviceClick(event);
         break;
 
       case 'select':
@@ -1176,8 +1372,35 @@ export class Editor implements OnInit {
     this.selectRoom(room.id);
   }
 
-  handleSensorClick(event: MouseEvent) {
-    console.log('Sensor tool clicked');
+  handleDeviceClick(event: MouseEvent) {
+    const point = this.getSvgPoint(event);
+
+    const device: SmartDevice = {
+      id: crypto.randomUUID(),
+
+      type: 'mmwave',
+
+      name: 'New Device',
+
+      position: {
+        ...point,
+      },
+
+      rotation: 0,
+
+      enabled: true,
+    };
+
+    this.propertyService.addDevice(device);
+
+    this.editorStateService.selectedDeviceId = device.id;
+
+    this.editorStateService.selectedWallId = null;
+    this.editorStateService.selectedDoorId = null;
+    this.editorStateService.selectedWindowId = null;
+    this.editorStateService.selectedRoomId = null;
+
+    this.editorStateService.activeTool = 'select';
   }
 
   // ==================================================
@@ -1207,6 +1430,8 @@ export class Editor implements OnInit {
     this.editorStateService.draggingWallId = null;
     this.editorStateService.draggingWallMove = false;
     this.editorStateService.draggingEndpoint = null;
+    this.editorStateService.draggingDeviceId = null;
+    this.draggingDeviceRotation = false;
 
     this.draggingOriginalPoint = null;
 

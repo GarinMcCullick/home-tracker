@@ -1,4 +1,4 @@
-export type EditorTool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'sensor';
+export type EditorTool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'device';
 
 export function getCursorClass(tool: EditorTool): string {
   switch (tool) {
@@ -14,8 +14,8 @@ export function getCursorClass(tool: EditorTool): string {
     case 'room':
       return 'cursor-room';
 
-    case 'sensor':
-      return 'cursor-sensor';
+    case 'device':
+      return 'cursor-device';
 
     case 'select':
     default:
