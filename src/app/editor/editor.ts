@@ -48,6 +48,7 @@ export class Editor implements OnInit {
     target2: { x: null, y: null },
     target3: { x: null, y: null },
   };
+
   // ==================================================
   // DRAGGING
   // ==================================================
@@ -226,36 +227,36 @@ export class Editor implements OnInit {
     this.homeAssistantService.apolloTargets$.subscribe((targets) => {
       this.apolloTargets = targets;
 
-      this.cdr.markForCheck();
-
       console.log('APOLLO:', targets.target1);
+
+      this.cdr.markForCheck();
     });
   }
 
-  get apolloTarget1Position(): Point {
+  get apolloTarget1Position(): Point | null {
     const device = this.propertyService.property.devices.find((d) => d.type === 'mmwave');
 
     if (!device) {
-      return { x: 0, y: 0 };
+      return null;
     }
 
-    // Raw LD2450 position relative to the sensor
-    const x = this.apolloTargets.target1.x ?? 0;
-    const y = this.apolloTargets.target1.y ?? 0;
+    const x = this.apolloTargets.target1.x;
+    const y = this.apolloTargets.target1.y;
 
-    // Mirror the LD2450 coordinate system to match the floor plan.
+    // No valid target
+    if (x === null || y === null) {
+      return null;
+    }
+
     const sensorX = -x;
     const sensorY = -y;
 
-    // Device rotation is stored in degrees.
     const angle = (device.rotation * Math.PI) / 180;
 
-    // Rotate sensor-relative coordinates with the device.
     const rotatedX = sensorX * Math.cos(angle) - sensorY * Math.sin(angle);
 
     const rotatedY = sensorX * Math.sin(angle) + sensorY * Math.cos(angle);
 
-    // Convert to floor-plan coordinates.
     return {
       x: device.position.x + rotatedX,
       y: device.position.y + rotatedY,
