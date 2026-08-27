@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { SmartDevice, SmartDeviceType } from '../models/smart-device';
 import { PropertyService } from '../services/property';
 import { EditorStateService, EditorTool, Point } from '../services/editor-state';
-import { ApolloTargets, HomeAssistantService, HALight } from '../services/home-assistant';
+import { ApolloTargets, HomeAssistantService, HALight, HAEntity } from '../services/home-assistant';
 
 import { Door } from '../models/door';
 import { Window } from '../models/window';
@@ -50,11 +50,136 @@ export class Editor implements OnInit {
   };
 
   lights: HALight[] = [];
-  selectedHAEntity: HALight | null = null;
+  haEntities: HAEntity[] = [];
 
-  selectHALight(light: HALight) {
-    this.selectedHAEntity = light;
+  haDevicesOpen = true;
+  selectedHAEntity: HAEntity | null = null;
+
+  toggleHADevices(): void {
+    this.haDevicesOpen = !this.haDevicesOpen;
   }
+
+  selectHAEntity(entity: HAEntity): void {
+    this.selectedHAEntity = entity;
+
+    console.log('Selected HA entity:', entity);
+  }
+
+  closeHAEntityDetails(): void {
+    this.selectedHAEntity = null;
+  }
+
+  getHAIcon(domain: string): string {
+    switch (domain) {
+      case 'light':
+        return '💡';
+
+      case 'switch':
+        return '🔌';
+
+      case 'sensor':
+        return '📊';
+
+      case 'binary_sensor':
+        return '◉';
+
+      case 'camera':
+        return '📷';
+
+      case 'climate':
+        return '🌡️';
+
+      case 'media_player':
+        return '🔊';
+
+      case 'remote':
+        return '📡';
+
+      case 'cover':
+        return '▣';
+
+      case 'fan':
+        return '🌀';
+
+      default:
+        return '◆';
+    }
+  }
+
+  getHADomainName(domain: string): string {
+    switch (domain) {
+      case 'light':
+        return 'Lights';
+
+      case 'switch':
+        return 'Switches';
+
+      case 'sensor':
+        return 'Sensors';
+
+      case 'binary_sensor':
+        return 'Binary Sensors';
+
+      case 'camera':
+        return 'Cameras';
+
+      case 'climate':
+        return 'Climate';
+
+      case 'media_player':
+        return 'Media Players';
+
+      case 'remote':
+        return 'Remotes';
+
+      case 'cover':
+        return 'Covers';
+
+      case 'fan':
+        return 'Fans';
+
+      default:
+        return 'Other';
+    }
+  }
+
+  // ==================================================
+  // HOME ASSISTANT DEVICE Type Mapper
+  // ==================================================
+  getSmartDeviceType(domain: string): SmartDeviceType {
+    switch (domain) {
+      case 'light':
+        return 'light';
+
+      case 'switch':
+        return 'switch';
+
+      case 'camera':
+        return 'camera';
+
+      case 'climate':
+        return 'thermostat';
+
+      case 'media_player':
+        return 'speaker';
+
+      case 'binary_sensor':
+        return 'motion';
+
+      case 'sensor':
+        return 'sensor';
+
+      default:
+        return 'other';
+    }
+  }
+
+  // ==================================================
+  // HOME ASSISTANT DEVICE DRAGGING
+  // ==================================================
+
+  draggingHAEntity: HAEntity | null = null;
+  haDragPreview: Point | null = null;
 
   // ==================================================
   // DRAGGING
@@ -120,6 +245,14 @@ export class Editor implements OnInit {
 
   @HostListener('window:mouseup', ['$event'])
   onWindowMouseUp(event: MouseEvent) {
+    if (this.draggingHAEntity) {
+      const point = this.getSvgPointFromWindow(event);
+
+      this.dropHAEntity(point);
+
+      return;
+    }
+
     if (this.editorStateService.isPanning) {
       this.editorStateService.isPanning = false;
       return;
@@ -130,6 +263,10 @@ export class Editor implements OnInit {
 
   @HostListener('window:mousemove', ['$event'])
   onWindowMouseMove(event: MouseEvent) {
+    if (this.draggingHAEntity) {
+      this.haDragPreview = this.getSvgPointFromWindow(event);
+      return;
+    }
     if (
       !this.editorStateService.draggingWallId &&
       !this.editorStateService.draggingDoorId &&
@@ -166,14 +303,11 @@ export class Editor implements OnInit {
 
     if (this.editorStateService.draggingWindowId) {
       this.dragWindow(point);
+      return;
     }
 
     if (this.editorStateService.draggingDeviceId) {
       this.dragDevice(point);
-      return;
-    }
-    if (this.draggingDeviceRotation) {
-      this.rotateDevice(point);
       return;
     }
     if (this.draggingDeviceRotation) {
@@ -230,7 +364,16 @@ export class Editor implements OnInit {
 
   async ngOnInit() {
     this.propertyService.recalculateRooms();
+
     await this.homeAssistantService.connect();
+
+    this.homeAssistantService.entities$.subscribe((entities) => {
+      this.haEntities = entities;
+
+      console.log('HA ENTITIES:', entities);
+
+      this.cdr.markForCheck();
+    });
 
     this.homeAssistantService.lights$.subscribe((lights) => {
       this.lights = lights;
@@ -331,6 +474,53 @@ export class Editor implements OnInit {
     }
 
     return null;
+  }
+
+  // ==================================================
+  // Home Assistant Helper Functions
+  // ==================================================
+
+  getSelectedDevice(): SmartDevice | undefined {
+    const deviceId = this.editorStateService.selectedDeviceId;
+
+    if (!deviceId) {
+      return undefined;
+    }
+
+    return this.propertyService.property.devices.find((device) => device.id === deviceId);
+  }
+
+  getSelectedDeviceLight(): HALight | undefined {
+    const device = this.getSelectedDevice();
+
+    if (!device?.entityId || device.type !== 'light') {
+      return undefined;
+    }
+
+    return this.lights.find((light) => light.entityId === device.entityId);
+  }
+
+  toggleSelectedDevice() {
+    const device = this.getSelectedDevice();
+
+    if (!device?.entityId) {
+      return;
+    }
+
+    this.homeAssistantService.toggle(device.entityId);
+  }
+
+  setSelectedLightBrightness(event: Event) {
+    const device = this.getSelectedDevice();
+
+    if (!device?.entityId) {
+      return;
+    }
+
+    const input = event.target as HTMLInputElement;
+    const brightness = Number(input.value);
+
+    this.homeAssistantService.setLightBrightness(device.entityId, brightness);
   }
 
   // ==================================================
@@ -755,6 +945,94 @@ export class Editor implements OnInit {
     };
   }
 
+  // ==================================================
+  // Home Assistant Device Dragging
+  // ==================================================
+
+  startDraggingHAEntity(event: MouseEvent, entity: HAEntity): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    this.draggingHAEntity = entity;
+
+    this.haDragPreview = this.getSvgPointFromWindow(event);
+
+    console.log('HA DRAG START:', entity);
+  }
+
+  dropHAEntity(point: Point): void {
+    const entity = this.draggingHAEntity;
+
+    if (!entity) {
+      return;
+    }
+
+    console.log('HA DROP:', entity, point);
+
+    // --------------------------------
+    // Prevent duplicates
+    // --------------------------------
+
+    const existing = this.propertyService.property.devices.find(
+      (device) => device.entityId === entity.entityId,
+    );
+
+    if (existing) {
+      console.log('HA ENTITY ALREADY PLACED:', entity.entityId);
+
+      this.editorStateService.selectedDeviceId = existing.id;
+
+      this.draggingHAEntity = null;
+      this.haDragPreview = null;
+
+      return;
+    }
+
+    // --------------------------------
+    // Create SmartDevice
+    // --------------------------------
+
+    const device: SmartDevice = {
+      id: crypto.randomUUID(),
+
+      type: this.getSmartDeviceType(entity.domain),
+
+      name: entity.name,
+
+      position: {
+        x: point.x,
+        y: point.y,
+      },
+
+      rotation: 0,
+
+      entityId: entity.entityId,
+
+      enabled: true,
+    };
+
+    this.propertyService.addDevice(device);
+
+    // --------------------------------
+    // Select it
+    // --------------------------------
+
+    this.editorStateService.selectedDeviceId = device.id;
+
+    this.editorStateService.selectedWallId = null;
+    this.editorStateService.selectedDoorId = null;
+    this.editorStateService.selectedWindowId = null;
+    this.editorStateService.selectedRoomId = null;
+
+    // --------------------------------
+    // Cleanup
+    // --------------------------------
+
+    this.draggingHAEntity = null;
+    this.haDragPreview = null;
+
+    console.log('HA DEVICE ADDED:', device);
+  }
   // ==================================================
   // DOOR DRAGGING
   // ==================================================
