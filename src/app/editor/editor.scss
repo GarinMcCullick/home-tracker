@@ -568,3 +568,6 @@
   font-size: 13px;
   color: #777;
 }
+app-device-inspector.device-dragging {
+  pointer-events: none;
+}

@@ -1,0 +1,155 @@
+.device-inspector {
+  position: fixed;
+
+  width: 280px;
+
+  background: white;
+
+  border: 1px solid #ddd;
+  border-radius: 12px;
+
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+
+  overflow: hidden;
+
+  z-index: 2000;
+
+  user-select: none;
+}
+
+.inspector-header {
+  display: flex;
+
+  justify-content: space-between;
+  align-items: center;
+
+  padding: 12px 14px;
+
+  background: #f7f7f7;
+
+  border-bottom: 1px solid #e5e5e5;
+
+  cursor: move;
+}
+
+.header-info {
+  min-width: 0;
+}
+
+.device-name {
+  font-size: 14px;
+  font-weight: 600;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.device-type {
+  margin-top: 2px;
+
+  font-size: 11px;
+
+  color: #888;
+
+  text-transform: capitalize;
+}
+
+.close-button {
+  width: 26px;
+  height: 26px;
+
+  border: none;
+  border-radius: 6px;
+
+  background: transparent;
+
+  font-size: 20px;
+
+  cursor: pointer;
+}
+
+.close-button:hover {
+  background: #e5e5e5;
+}
+
+.inspector-body {
+  padding: 14px;
+}
+
+.connection {
+  display: flex;
+  align-items: center;
+
+  gap: 7px;
+
+  margin-bottom: 12px;
+
+  font-size: 12px;
+
+  text-transform: capitalize;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+
+  border-radius: 50%;
+
+  background: #999;
+}
+
+.status-dot.on {
+  background: #32c759;
+}
+
+.power-button {
+  width: 100%;
+
+  padding: 10px;
+
+  border: none;
+  border-radius: 8px;
+
+  background: #eee;
+
+  cursor: pointer;
+}
+
+.power-button.active {
+  background: #222;
+
+  color: white;
+}
+
+.control {
+  margin-top: 18px;
+}
+
+.control-header {
+  display: flex;
+
+  justify-content: space-between;
+
+  margin-bottom: 7px;
+
+  font-size: 12px;
+}
+
+.control input[type='range'] {
+  width: 100%;
+}
+
+.section-title {
+  font-size: 13px;
+
+  font-weight: 600;
+
+  margin-bottom: 10px;
+}
+
+.coming-soon {
+  font-size: 12px;
+
+  color: #888;
+}

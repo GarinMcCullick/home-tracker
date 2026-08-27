@@ -5,7 +5,7 @@ import { SmartDevice, SmartDeviceType } from '../models/smart-device';
 import { PropertyService } from '../services/property';
 import { EditorStateService, EditorTool, Point } from '../services/editor-state';
 import { ApolloTargets, HomeAssistantService, HALight, HAEntity } from '../services/home-assistant';
-
+import { DeviceInspector } from '../device-inspector/device-inspector';
 import { Door } from '../models/door';
 import { Window } from '../models/window';
 import { Wall } from '../models/wall';
@@ -38,7 +38,7 @@ import { getCursorClass } from '../utils/editor-utils';
 @Component({
   selector: 'app-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DeviceInspector],
   templateUrl: './editor.html',
   styleUrl: './editor.scss',
 })
@@ -180,6 +180,7 @@ export class Editor implements OnInit {
 
   draggingHAEntity: HAEntity | null = null;
   haDragPreview: Point | null = null;
+  mouseCursor: Point | null = null;
 
   // ==================================================
   // DRAGGING
@@ -248,6 +249,11 @@ export class Editor implements OnInit {
     if (this.draggingHAEntity) {
       const point = this.getSvgPointFromWindow(event);
 
+      this.mouseCursor = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+
       this.dropHAEntity(point);
 
       return;
@@ -263,6 +269,19 @@ export class Editor implements OnInit {
 
   @HostListener('window:mousemove', ['$event'])
   onWindowMouseMove(event: MouseEvent) {
+    if (this.editorStateService.draggingDeviceId) {
+      const point = this.getSvgPointFromWindow(event);
+
+      this.mouseCursor = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+
+      this.dragDevice(point);
+      this.cdr.markForCheck();
+
+      return;
+    }
     if (this.draggingHAEntity) {
       this.haDragPreview = this.getSvgPointFromWindow(event);
       return;
@@ -351,6 +370,21 @@ export class Editor implements OnInit {
     };
   }
 
+  // ==================================================
+  // Device Inspector positioning
+  // ==================================================
+  get deviceInspectorPosition(): { x: number; y: number } | undefined {
+    const device = this.getSelectedDevice();
+
+    if (!device || !this.mouseCursor) {
+      return undefined;
+    }
+
+    return {
+      x: this.mouseCursor.x + 75,
+      y: this.mouseCursor.y,
+    };
+  }
   // ==================================================
   // EDITOR STATE
   // ==================================================
@@ -718,6 +752,11 @@ export class Editor implements OnInit {
       return;
     }
 
+    this.mouseCursor = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+
     this.editorStateService.selectedDeviceId = deviceId;
 
     this.editorStateService.selectedWallId = null;
@@ -906,6 +945,10 @@ export class Editor implements OnInit {
 
   draggingDeviceRotation = false;
 
+  get isDraggingWorkspaceDevice(): boolean {
+    return this.editorStateService.draggingDeviceId !== null;
+  }
+
   startDraggingDevice(event: MouseEvent, deviceId: string) {
     event.stopPropagation();
     event.preventDefault();
@@ -919,6 +962,11 @@ export class Editor implements OnInit {
     if (!device) {
       return;
     }
+
+    this.mouseCursor = {
+      x: event.clientX,
+      y: event.clientY,
+    };
 
     this.editorStateService.selectedDeviceId = deviceId;
 
@@ -1730,6 +1778,7 @@ export class Editor implements OnInit {
     this.draggingDeviceRotation = false;
 
     this.draggingOriginalPoint = null;
+    this.mouseCursor = null;
 
     this.editorStateService.draggingDoorId = null;
     this.editorStateService.draggingWindowId = null;

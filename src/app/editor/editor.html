@@ -119,61 +119,17 @@
     </div>
   </div>
   <!--DEVICE CONTROL PANEL-->
-  <div class="device-control-panel" *ngIf="getSelectedDevice() as device">
-    <div class="device-panel-header">
-      <div>
-        <div class="device-panel-title">
-          {{ device.name }}
-        </div>
 
-        <div class="device-panel-subtitle">
-          {{ device.type }}
-        </div>
-      </div>
-
-      <button class="device-panel-close" (click)="clearSelection()">×</button>
-    </div>
-
-    <div class="device-panel-body" *ngIf="device.entityId; else unlinkedDevice">
-      <ng-container *ngIf="getSelectedDeviceLight() as light">
-        <div class="device-state">
-          <span class="state-dot" [class.on]="light.state === 'on'"></span>
-
-          {{ light.state }}
-        </div>
-
-        <button
-          class="device-toggle"
-          [class.active]="light.state === 'on'"
-          (click)="toggleSelectedDevice()"
-        >
-          {{ light.state === 'on' ? 'Turn Off' : 'Turn On' }}
-        </button>
-
-        <div class="control-group" *ngIf="light.attributes['brightness'] != null">
-          <div class="control-label">
-            <span>Brightness</span>
-
-            <span>
-              {{ light.attributes['brightness'] }}
-            </span>
-          </div>
-
-          <input
-            type="range"
-            min="1"
-            max="255"
-            [value]="light.attributes['brightness']"
-            (input)="setSelectedLightBrightness($event)"
-          />
-        </div>
-      </ng-container>
-    </div>
-
-    <ng-template #unlinkedDevice>
-      <div class="device-unlinked">This device isn't linked to Home Assistant.</div>
-    </ng-template>
-  </div>
+  <!--DEVICE INSPECTOR-->
+  <app-device-inspector
+    *ngIf="editorStateService.selectedDeviceId"
+    [class.device-dragging]="isDraggingWorkspaceDevice"
+    [device]="getSelectedDevice()"
+    [light]="getSelectedDeviceLight()"
+    [initialPosition]="deviceInspectorPosition"
+    (close)="clearSelection()"
+  >
+  </app-device-inspector>
   <!-- WORKSPACE -->
   <div class="workspace">
     <div>Walls: {{ propertyService.property.walls.length }}</div>
