@@ -278,8 +278,18 @@ export class Editor implements OnInit {
       };
 
       this.dragDevice(point);
-      this.cdr.markForCheck();
 
+      const deviceId = this.editorStateService.draggingDeviceId;
+
+      // Only move inspector with cursor when it is unlocked.
+      if (!this.isInspectorLocked(deviceId)) {
+        this.setInspectorPosition(deviceId, {
+          x: event.clientX + 75,
+          y: event.clientY,
+        });
+      }
+
+      this.cdr.markForCheck();
       return;
     }
     if (this.draggingHAEntity) {
@@ -383,15 +393,6 @@ export class Editor implements OnInit {
 
   inspectorPositions = new Map<string, { x: number; y: number }>();
 
-  getInspectorPosition(deviceId: string): { x: number; y: number } {
-    return (
-      this.inspectorPositions.get(deviceId) ?? {
-        x: 100,
-        y: 100,
-      }
-    );
-  }
-
   setInspectorPosition(deviceId: string, position: { x: number; y: number }): void {
     this.inspectorPositions.set(deviceId, {
       x: position.x,
@@ -417,8 +418,6 @@ export class Editor implements OnInit {
     }
 
     this.lockedInspectorDeviceIds.add(deviceId);
-
-    console.log('LOCKED INSPECTOR:', deviceId, this.getInspectorPosition(deviceId));
   }
 
   unlockInspector(deviceId: string): void {
@@ -559,6 +558,15 @@ export class Editor implements OnInit {
   // ==================================================
   // Home Assistant Helper Functions
   // ==================================================
+
+  getInspectorPosition(deviceId: string): { x: number; y: number } {
+    return (
+      this.inspectorPositions.get(deviceId) ?? {
+        x: window.innerWidth / 2,
+        y: 100,
+      }
+    );
+  }
 
   getSelectedDevice(): SmartDevice | undefined {
     const deviceId = this.editorStateService.selectedDeviceId;
@@ -1102,14 +1110,22 @@ export class Editor implements OnInit {
       y: event.clientY,
     };
 
-    this.editorStateService.selectedDeviceId = deviceId;
+    // put its inspector next to the mouse immediately.
+    if (!this.isInspectorLocked(deviceId)) {
+      this.setInspectorPosition(deviceId, {
+        x: event.clientX + 75,
+        y: event.clientY,
+      });
+    }
 
+    this.editorStateService.selectedDeviceId = deviceId;
     this.editorStateService.selectedWallId = null;
     this.editorStateService.selectedDoorId = null;
     this.editorStateService.selectedWindowId = null;
     this.editorStateService.selectedRoomId = null;
-
     this.editorStateService.draggingDeviceId = deviceId;
+
+    this.cdr.markForCheck();
   }
 
   dragDevice(point: Point) {
@@ -1203,6 +1219,10 @@ export class Editor implements OnInit {
     this.editorStateService.selectedDoorId = null;
     this.editorStateService.selectedWindowId = null;
     this.editorStateService.selectedRoomId = null;
+    this.setInspectorPosition(device.id, {
+      x: (this.mouseCursor?.x ?? 100) + 75,
+      y: (this.mouseCursor?.y ?? 100) + 20,
+    });
 
     // --------------------------------
     // Cleanup
@@ -1909,7 +1929,6 @@ export class Editor implements OnInit {
     this.draggingDeviceRotation = false;
 
     this.draggingOriginalPoint = null;
-    this.mouseCursor = null;
 
     this.editorStateService.draggingDoorId = null;
     this.editorStateService.draggingWindowId = null;
