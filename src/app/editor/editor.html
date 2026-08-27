@@ -118,20 +118,43 @@
       </div>
     </div>
   </div>
-  <!--DEVICE CONTROL PANEL-->
+  <!-- LOCKED INSPECTORS -->
+  <ng-container *ngFor="let lockedDevice of getLockedInspectorDevices()">
+    <app-device-inspector
+      [device]="lockedDevice"
+      [light]="getDeviceLight(lockedDevice)"
+      [initialPosition]="getInspectorPosition(lockedDevice.id)"
+      [locked]="true"
+      [isSelected]="editorStateService.selectedDeviceId === lockedDevice.id"
+      [deviceColor]="getDeviceColor(lockedDevice.id)"
+      (positionChange)="setInspectorPosition(lockedDevice.id, $event)"
+      (lockToggle)="unlockInspector(lockedDevice.id)"
+      (close)="unlockInspector(lockedDevice.id)"
+      (delete)="deleteDeviceById(lockedDevice.id)"
+    >
+    </app-device-inspector>
+  </ng-container>
 
-  <!--DEVICE INSPECTOR-->
-  <app-device-inspector
-    *ngIf="editorStateService.selectedDeviceId"
-    [class.device-dragging]="isDraggingWorkspaceDevice"
-    [device]="getSelectedDevice()"
-    [light]="getSelectedDeviceLight()"
-    [initialPosition]="deviceInspectorPosition"
-    (close)="clearSelection()"
-    (delete)="deleteSelectedDevice()"
-    (lockToggle)="toggleInspectorLock()"
+  <!-- CURRENT / ACTIVE INSPECTOR -->
+  <ng-container
+    *ngIf="
+      editorStateService.selectedDeviceId && !isInspectorLocked(editorStateService.selectedDeviceId)
+    "
   >
-  </app-device-inspector>
+    <app-device-inspector
+      [device]="getSelectedDevice()"
+      [light]="getSelectedDeviceLight()"
+      [initialPosition]="getInspectorPosition(editorStateService.selectedDeviceId!)"
+      [locked]="false"
+      [isSelected]="true"
+      [deviceColor]="getDeviceColor(editorStateService.selectedDeviceId!)"
+      (positionChange)="setInspectorPosition(editorStateService.selectedDeviceId!, $event)"
+      (lockToggle)="lockSelectedDevice($event)"
+      (close)="clearSelection()"
+      (delete)="deleteSelectedDevice()"
+    >
+    </app-device-inspector>
+  </ng-container>
   <!-- WORKSPACE -->
   <div class="workspace">
     <div>Walls: {{ propertyService.property.walls.length }}</div>
@@ -499,23 +522,28 @@
             (mousedown)="startDraggingDevice($event, device.id)"
           >
             @if (editorStateService.selectedDeviceId === device.id) {
-              <g
-                class="device-rotation-handle"
-                pointer-events="all"
-                (mousedown)="startRotatingDevice($event, device.id)"
-              >
-                <line x1="0" y1="-21" x2="0" y2="-38" stroke="#2196f3" stroke-width="3" />
-
-                <circle cx="0" cy="-42" r="7" fill="#2196f3" stroke="white" stroke-width="2" />
-              </g>
+              <circle
+                r="21"
+                fill="none"
+                [attr.stroke]="getDeviceColor(device.id)"
+                stroke-width="3"
+                stroke-dasharray="5 4"
+                pointer-events="none"
+              />
             }
             <!-- Device body -->
             <circle
               r="8"
               [attr.fill]="
-                editorStateService.selectedDeviceId === device.id ? '#2196f3' : '#7c3aed'
+                editorStateService.selectedDeviceId === device.id || isInspectorLocked(device.id)
+                  ? getDeviceColor(device.id)
+                  : '#6b7280'
               "
-              stroke="white"
+              [attr.stroke]="
+                editorStateService.selectedDeviceId === device.id || isInspectorLocked(device.id)
+                  ? getDeviceColor(device.id)
+                  : 'white'
+              "
               stroke-width="2"
             />
 
@@ -535,7 +563,7 @@
               <circle
                 r="21"
                 fill="none"
-                stroke="#2196f3"
+                [attr.stroke]="getDeviceColor(device.id)"
                 stroke-width="3"
                 stroke-dasharray="5 4"
                 pointer-events="none"

@@ -30,4 +30,5 @@ export interface SmartDevice {
   entityId?: string;
 
   enabled: boolean;
+  color?: string;
 }

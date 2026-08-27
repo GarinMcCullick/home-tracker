@@ -18,7 +18,8 @@ export class DeviceInspector {
   @Input() device: SmartDevice | undefined;
 
   @Input() light: HALight | undefined;
-
+  @Input() deviceColor = '#2196f3';
+  @Input() isSelected = false;
   @Input() initialPosition?: {
     x: number;
     y: number;
@@ -27,7 +28,8 @@ export class DeviceInspector {
 
   @Output() close = new EventEmitter<void>();
   @Output() delete = new EventEmitter<void>();
-  @Output() lockToggle = new EventEmitter<void>();
+  @Output() lockToggle = new EventEmitter<{ x: number; y: number }>();
+  @Output() positionChange = new EventEmitter<{ x: number; y: number }>();
 
   private lastInitialPosition: { x: number; y: number } | undefined;
   // -----------------------------------------
@@ -117,11 +119,20 @@ export class DeviceInspector {
   };
 
   private stopDragging = () => {
+    if (!this.dragging) {
+      return;
+    }
+
     this.dragging = false;
 
     window.removeEventListener('mousemove', this.onDrag);
-
     window.removeEventListener('mouseup', this.stopDragging);
+
+    // Tell the editor where the inspector ended up.
+    this.positionChange.emit({
+      x: this.position.x,
+      y: this.position.y,
+    });
   };
 
   // -----------------------------------------
