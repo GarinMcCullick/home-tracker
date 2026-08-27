@@ -1,1 +1,125 @@
-<p>device-inspector works!</p>
+<div class="device-inspector" [style.left.px]="position.x" [style.top.px]="position.y">
+  <!-- HEADER -->
+
+  <div class="inspector-header" (mousedown)="startDragging($event)">
+    <div class="header-info">
+      <div class="device-name">
+        {{ device?.name }}
+      </div>
+
+      <div class="device-type">
+        {{ device?.type }}
+      </div>
+    </div>
+
+    <button class="close-button" (mousedown)="$event.stopPropagation()" (click)="closeInspector()">
+      ×
+    </button>
+  </div>
+
+  <!-- BODY -->
+
+  <div class="inspector-body">
+    <!-- ================================= -->
+    <!-- LIGHT -->
+    <!-- ================================= -->
+
+    <ng-container *ngIf="isLight() && light">
+      <div class="connection">
+        <span class="status-dot" [class.on]="light.state === 'on'"></span>
+
+        {{ light.state }}
+      </div>
+
+      <button class="power-button" [class.active]="light.state === 'on'" (click)="toggleLight()">
+        {{ light.state === 'on' ? 'Turn Off' : 'Turn On' }}
+      </button>
+
+      <!-- BRIGHTNESS -->
+
+      <div class="control" *ngIf="light.attributes['brightness'] != null">
+        <div class="control-header">
+          <span>Brightness</span>
+
+          <span>
+            {{ brightness }}
+          </span>
+        </div>
+
+        <input
+          type="range"
+          min="1"
+          max="255"
+          [value]="brightness"
+          (input)="setBrightness($event)"
+        />
+      </div>
+    </ng-container>
+
+    <!-- ================================= -->
+    <!-- SWITCH -->
+    <!-- ================================= -->
+
+    <ng-container *ngIf="isSwitch()">
+      <div class="section-title">Switch</div>
+
+      <button
+        class="power-button"
+        *ngIf="device?.entityId"
+        (click)="homeAssistantService.toggle(device!.entityId!)"
+      >
+        Toggle
+      </button>
+    </ng-container>
+
+    <!-- ================================= -->
+    <!-- THERMOSTAT -->
+    <!-- ================================= -->
+
+    <ng-container *ngIf="isThermostat()">
+      <div class="section-title">Thermostat</div>
+
+      <div class="coming-soon">Temperature controls</div>
+    </ng-container>
+
+    <!-- ================================= -->
+    <!-- CAMERA -->
+    <!-- ================================= -->
+
+    <ng-container *ngIf="isCamera()">
+      <div class="section-title">Camera</div>
+
+      <div class="coming-soon">Camera controls</div>
+    </ng-container>
+
+    <!-- ================================= -->
+    <!-- MMWAVE -->
+    <!-- ================================= -->
+
+    <ng-container *ngIf="isMmWave()">
+      <div class="section-title">mmWave Sensor</div>
+
+      <div class="coming-soon">Sensor controls</div>
+    </ng-container>
+
+    <!-- ================================= -->
+    <!-- MOTION -->
+    <!-- ================================= -->
+
+    <ng-container *ngIf="isMotion()">
+      <div class="section-title">Motion Sensor</div>
+
+      <div class="coming-soon">Motion information</div>
+    </ng-container>
+
+    <!-- ================================= -->
+    <!-- SPEAKER -->
+    <!-- ================================= -->
+
+    <ng-container *ngIf="isSpeaker()">
+      <div class="section-title">Speaker</div>
+
+      <div class="coming-soon">Media controls</div>
+    </ng-container>
+  </div>
+</div>
