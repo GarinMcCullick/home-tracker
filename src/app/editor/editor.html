@@ -523,6 +523,29 @@
           >
             @if (editorStateService.selectedDeviceId === device.id) {
               <circle
+                cx="0"
+                cy="-32"
+                r="7"
+                fill="orange"
+                stroke="white"
+                stroke-width="2"
+                pointer-events="all"
+                class="device-rotation-handle"
+                (mousedown)="startRotatingDevice($event, device.id)"
+              />
+
+              <line
+                x1="0"
+                y1="-21"
+                x2="0"
+                y2="-32"
+                stroke="orange"
+                stroke-width="2"
+                pointer-events="none"
+              />
+            }
+            @if (editorStateService.selectedDeviceId === device.id) {
+              <circle
                 r="21"
                 fill="none"
                 [attr.stroke]="getDeviceColor(device.id)"
