@@ -1,10 +1,22 @@
-<div class="device-inspector" [style.left.px]="position.x" [style.top.px]="position.y">
+<div
+  class="device-inspector"
+  [class.selected]="isSelected"
+  [style.left.px]="position.x"
+  [style.top.px]="position.y"
+  [style.--device-color]="deviceColor"
+  (mousedown)="$event.stopPropagation()"
+  (click)="$event.stopPropagation()"
+>
   <!-- HEADER -->
 
   <div class="inspector-header" (mousedown)="startDragging($event)">
     <div class="header-info">
-      <div class="device-name">
-        {{ device?.name }}
+      <div class="device-name-row">
+        <span class="device-color-dot" [style.background-color]="device?.color || '#3b82f6'"></span>
+
+        <div class="device-name">
+          {{ device?.name }}
+        </div>
       </div>
 
       <div class="device-type">
@@ -14,7 +26,8 @@
     <button
       type="button"
       class="inspector-lock-button"
-      (click)="lockToggle.emit()"
+      (mousedown)="$event.stopPropagation()"
+      (click)="lockToggle.emit(position)"
       [title]="locked ? 'Unlock inspector' : 'Lock inspector'"
     >
       {{ locked ? '🔒' : '🔓' }}

@@ -376,25 +376,61 @@ export class Editor implements OnInit {
   }
 
   // ==================================================
-  // Device Inspector positioning
+  // DEVICE INSPECTORS
   // ==================================================
-  inspectorLocked = false;
 
-  toggleInspectorLock(): void {
-    this.inspectorLocked = !this.inspectorLocked;
+  lockedInspectorDeviceIds = new Set<string>();
+
+  inspectorPositions = new Map<string, { x: number; y: number }>();
+
+  getInspectorPosition(deviceId: string): { x: number; y: number } {
+    return (
+      this.inspectorPositions.get(deviceId) ?? {
+        x: 100,
+        y: 100,
+      }
+    );
   }
 
-  get deviceInspectorPosition(): { x: number; y: number } | undefined {
-    const device = this.getSelectedDevice();
-    if (!device || !this.mouseCursor) {
-      return undefined;
+  setInspectorPosition(deviceId: string, position: { x: number; y: number }): void {
+    this.inspectorPositions.set(deviceId, {
+      x: position.x,
+      y: position.y,
+    });
+  }
+
+  lockSelectedDevice(position?: { x: number; y: number }): void {
+    const deviceId = this.editorStateService.selectedDeviceId;
+
+    if (!deviceId) {
+      return;
     }
 
-    return {
-      x: this.mouseCursor.x + 75,
-      y: this.mouseCursor.y,
-    };
+    if (this.lockedInspectorDeviceIds.has(deviceId)) {
+      return;
+    }
+
+    // If the inspector gave us its current position,
+    // preserve that exact position.
+    if (position) {
+      this.setInspectorPosition(deviceId, position);
+    }
+
+    this.lockedInspectorDeviceIds.add(deviceId);
+
+    console.log('LOCKED INSPECTOR:', deviceId, this.getInspectorPosition(deviceId));
   }
+
+  unlockInspector(deviceId: string): void {
+    this.lockedInspectorDeviceIds.delete(deviceId);
+
+    // IMPORTANT:
+    // Don't delete the position.
+    // If they unlock it, it should stay where they left it.
+
+    console.log('UNLOCKED INSPECTOR:', deviceId);
+  }
+
   // ==================================================
   // EDITOR STATE
   // ==================================================
@@ -534,6 +570,18 @@ export class Editor implements OnInit {
     return this.propertyService.property.devices.find((device) => device.id === deviceId);
   }
 
+  getDeviceColor(deviceId: string): string {
+    let hash = 0;
+
+    for (let i = 0; i < deviceId.length; i++) {
+      hash = deviceId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+
+    const hue = Math.abs(hash) % 360;
+
+    return `hsl(${hue}, 75%, 50%)`;
+  }
+
   getSelectedDeviceLight(): HALight | undefined {
     const device = this.getSelectedDevice();
 
@@ -567,6 +615,55 @@ export class Editor implements OnInit {
     this.homeAssistantService.setLightBrightness(device.entityId, brightness);
   }
 
+  getDeviceById(deviceId: string): SmartDevice | undefined {
+    return this.propertyService.property.devices.find((device) => device.id === deviceId);
+  }
+
+  getDeviceLight(device: SmartDevice): HALight | undefined {
+    if (!device.entityId || device.type !== 'light') {
+      return undefined;
+    }
+
+    return this.lights.find((light) => light.entityId === device.entityId);
+  }
+
+  isDeviceLocked(deviceId: string): boolean {
+    return this.lockedInspectorDeviceIds.has(deviceId);
+  }
+  getLockedInspectorDevices(): SmartDevice[] {
+    return Array.from(this.lockedInspectorDeviceIds)
+      .map((id) => this.getDeviceById(id))
+      .filter((device): device is SmartDevice => !!device);
+  }
+  isInspectorLocked(deviceId: string): boolean {
+    return this.lockedInspectorDeviceIds.has(deviceId);
+  }
+
+  private deviceColors = [
+    '#3b82f6', // blue
+    '#22c55e', // green
+    '#f97316', // orange
+    '#a855f7', // purple
+    '#ef4444', // red
+    '#06b6d4', // cyan
+    '#eab308', // yellow
+    '#ec4899', // pink
+    '#14b8a6', // teal
+    '#8b5cf6', // violet
+  ];
+
+  private getNextDeviceColor(): string {
+    const usedColors = new Set(
+      this.propertyService.property.devices
+        .map((d) => d.color)
+        .filter((color): color is string => !!color),
+    );
+
+    return (
+      this.deviceColors.find((color) => !usedColors.has(color)) ??
+      this.deviceColors[this.propertyService.property.devices.length % this.deviceColors.length]
+    );
+  }
   // ==================================================
   // WALL DISPLAY
   // ==================================================
@@ -762,14 +859,17 @@ export class Editor implements OnInit {
       return;
     }
 
-    if (this.inspectorLocked) {
-      return;
-    }
-
     this.mouseCursor = {
       x: event.clientX,
       y: event.clientY,
     };
+
+    if (!this.inspectorPositions.has(deviceId)) {
+      this.setInspectorPosition(deviceId, {
+        x: event.clientX + 75,
+        y: event.clientY,
+      });
+    }
 
     this.editorStateService.selectedDeviceId = deviceId;
 
@@ -800,9 +900,7 @@ export class Editor implements OnInit {
     this.editorStateService.selectedRoomId = null;
     this.editorStateService.selectedDoorId = null;
     this.editorStateService.selectedWindowId = null;
-    if (!this.inspectorLocked) {
-      this.editorStateService.selectedDeviceId = null;
-    }
+    this.editorStateService.selectedDeviceId = null;
 
     this.wallLengthInput = '';
     this.wallDimensionFocused = false;
@@ -852,13 +950,17 @@ export class Editor implements OnInit {
 
     this.editorStateService.selectedWindowId = null;
   }
-  deleteSelectedDevice() {
+  deleteSelectedDevice(): void {
     const deviceId = this.editorStateService.selectedDeviceId;
+
     if (!deviceId) {
       return;
     }
 
-    const device = this.propertyService.property.devices.find((device) => device.id === deviceId);
+    this.deleteDeviceById(deviceId);
+  }
+  deleteDeviceById(deviceId: string): void {
+    const device = this.getDeviceById(deviceId);
 
     if (!device) {
       return;
@@ -870,8 +972,14 @@ export class Editor implements OnInit {
       return;
     }
 
+    this.lockedInspectorDeviceIds.delete(deviceId);
+    this.inspectorPositions.delete(deviceId);
+
     this.propertyService.removeDevice(deviceId);
-    this.editorStateService.selectedDeviceId = null;
+
+    if (this.editorStateService.selectedDeviceId === deviceId) {
+      this.editorStateService.selectedDeviceId = null;
+    }
   }
 
   deleteSelectedWall() {
@@ -1071,21 +1179,16 @@ export class Editor implements OnInit {
 
     const device: SmartDevice = {
       id: crypto.randomUUID(),
-
       type: this.getSmartDeviceType(entity.domain),
-
       name: entity.name,
-
       position: {
         x: point.x,
         y: point.y,
       },
-
       rotation: 0,
-
       entityId: entity.entityId,
-
       enabled: true,
+      color: this.getNextDeviceColor(),
     };
 
     this.propertyService.addDevice(device);
@@ -1110,6 +1213,7 @@ export class Editor implements OnInit {
 
     console.log('HA DEVICE ADDED:', device);
   }
+
   // ==================================================
   // DOOR DRAGGING
   // ==================================================
@@ -1750,17 +1854,15 @@ export class Editor implements OnInit {
 
     const device: SmartDevice = {
       id: crypto.randomUUID(),
-
       type: light ? 'light' : 'mmwave',
       name: light ? light.name : 'New Device',
-
       position: {
         ...point,
       },
-
       rotation: 0,
       entityId: light?.entityId,
       enabled: true,
+      color: this.getNextDeviceColor(),
     };
 
     this.propertyService.addDevice(device);

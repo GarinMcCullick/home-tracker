@@ -1,39 +1,51 @@
 .device-inspector {
   position: fixed;
-
   width: 280px;
-
   background: white;
-
-  border: 1px solid #ddd;
+  border: 2px solid var(--device-color);
   border-radius: 12px;
-
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
-
   overflow: hidden;
-
   z-index: 2000;
-
   user-select: none;
+
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .inspector-header {
   display: flex;
-
   justify-content: space-between;
   align-items: center;
-
   padding: 12px 14px;
 
-  background: #f7f7f7;
+  background: color-mix(in srgb, var(--device-color, #3b82f6) 7%, #f7f7f7);
 
-  border-bottom: 1px solid #e5e5e5;
+  border-bottom: 4px solid var(--device-color, #3b82f6);
 
   cursor: move;
 }
 
 .header-info {
   min-width: 0;
+}
+
+.device-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.device-color-dot {
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
+  border-radius: 50%;
+
+  box-shadow:
+    0 0 5px var(--device-color, #3b82f6),
+    0 0 10px color-mix(in srgb, var(--device-color, #3b82f6) 60%, transparent);
 }
 
 .device-name {
