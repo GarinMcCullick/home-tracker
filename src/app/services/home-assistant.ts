@@ -9,6 +9,13 @@ export interface HAState {
   last_updated: string;
 }
 
+export interface HALight {
+  entityId: string;
+  name: string;
+  state: 'on' | 'off' | 'unavailable' | 'unknown';
+  attributes: Record<string, any>;
+}
+
 export interface MmWaveTarget {
   x: number | null;
   y: number | null;
@@ -36,6 +43,10 @@ export class HomeAssistantService {
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI4ZTZmZjIwMGQ0ZTg0NzNmYmFlZjhjNTg5NTBjZjEyZSIsImlhdCI6MTc4NzM1NDY3OCwiZXhwIjoyMTAyNzE0Njc4fQ.T6WaSThgNU365KiDP6VYZf0sJvzrRUYDyPrOiydyaRs';
 
   private states = new Map<string, HAState>();
+
+  private readonly lightsSubject = new BehaviorSubject<HALight[]>([]);
+
+  readonly lights$ = this.lightsSubject.asObservable();
 
   // ==================================================
   // APOLLO
@@ -668,6 +679,9 @@ export class HomeAssistantService {
           this.processApolloState(state);
         }
       }
+      this.lightsSubject.next(this.getLightEntities());
+
+      console.log('HA LIGHTS LOADED:', this.getLightEntities());
     }
   }
 
@@ -687,6 +701,10 @@ export class HomeAssistantService {
     }
 
     this.states.set(state.entity_id, state);
+
+    if (state.entity_id.startsWith('light.')) {
+      this.lightsSubject.next(this.getLightEntities());
+    }
 
     if (!this.apolloEntities.has(state.entity_id)) {
       return;
@@ -793,6 +811,25 @@ export class HomeAssistantService {
 
   getState(entityId: string): HAState | undefined {
     return this.states.get(entityId);
+  }
+
+  getLightEntities(): HALight[] {
+    const lights: HALight[] = [];
+
+    for (const state of this.states.values()) {
+      if (!state.entity_id.startsWith('light.')) {
+        continue;
+      }
+
+      lights.push({
+        entityId: state.entity_id,
+        name: state.attributes?.['friendly_name'] ?? state.entity_id.replace('light.', ''),
+        state: state.state as HALight['state'],
+        attributes: state.attributes ?? {},
+      });
+    }
+
+    return lights;
   }
 
   // ==================================================

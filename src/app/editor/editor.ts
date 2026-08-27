@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { SmartDevice, SmartDeviceType } from '../models/smart-device';
 import { PropertyService } from '../services/property';
 import { EditorStateService, EditorTool, Point } from '../services/editor-state';
-import { ApolloTargets, HomeAssistantService } from '../services/home-assistant';
+import { ApolloTargets, HomeAssistantService, HALight } from '../services/home-assistant';
 
 import { Door } from '../models/door';
 import { Window } from '../models/window';
@@ -48,6 +48,13 @@ export class Editor implements OnInit {
     target2: { x: null, y: null },
     target3: { x: null, y: null },
   };
+
+  lights: HALight[] = [];
+  selectedHAEntity: HALight | null = null;
+
+  selectHALight(light: HALight) {
+    this.selectedHAEntity = light;
+  }
 
   // ==================================================
   // DRAGGING
@@ -224,6 +231,15 @@ export class Editor implements OnInit {
   async ngOnInit() {
     this.propertyService.recalculateRooms();
     await this.homeAssistantService.connect();
+
+    this.homeAssistantService.lights$.subscribe((lights) => {
+      this.lights = lights;
+
+      console.log('HA LIGHTS:', lights);
+
+      this.cdr.markForCheck();
+    });
+
     this.homeAssistantService.apolloTargets$.subscribe((targets) => {
       this.apolloTargets = targets;
 
@@ -1375,20 +1391,20 @@ export class Editor implements OnInit {
 
   handleDeviceClick(event: MouseEvent) {
     const point = this.getSvgPoint(event);
+    const light = this.selectedHAEntity;
 
     const device: SmartDevice = {
       id: crypto.randomUUID(),
 
-      type: 'mmwave',
-
-      name: 'New Device',
+      type: light ? 'light' : 'mmwave',
+      name: light ? light.name : 'New Device',
 
       position: {
         ...point,
       },
 
       rotation: 0,
-
+      entityId: light?.entityId,
       enabled: true,
     };
 
@@ -1402,6 +1418,7 @@ export class Editor implements OnInit {
     this.editorStateService.selectedRoomId = null;
 
     this.editorStateService.activeTool = 'select';
+    this.selectedHAEntity = null;
   }
 
   // ==================================================
