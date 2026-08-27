@@ -23,8 +23,11 @@ export class DeviceInspector {
     x: number;
     y: number;
   };
+  @Input() locked = false;
 
   @Output() close = new EventEmitter<void>();
+  @Output() delete = new EventEmitter<void>();
+  @Output() lockToggle = new EventEmitter<void>();
 
   private lastInitialPosition: { x: number; y: number } | undefined;
   // -----------------------------------------
@@ -72,6 +75,14 @@ export class DeviceInspector {
 
   get deviceType(): SmartDeviceType | null {
     return this.device?.type ?? null;
+  }
+
+  // -----------------------------------------
+  // Delete Device
+  // -----------------------------------------
+
+  deleteDevice() {
+    this.delete.emit();
   }
 
   // -----------------------------------------

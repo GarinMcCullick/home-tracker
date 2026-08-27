@@ -179,7 +179,7 @@ export class Editor implements OnInit {
   // ==================================================
 
   draggingHAEntity: HAEntity | null = null;
-  haDragPreview: Point | null = null;
+  haDragPreview: { x: number; y: number } | null = null;
   mouseCursor: Point | null = null;
 
   // ==================================================
@@ -283,7 +283,12 @@ export class Editor implements OnInit {
       return;
     }
     if (this.draggingHAEntity) {
-      this.haDragPreview = this.getSvgPointFromWindow(event);
+      this.haDragPreview = {
+        x: event.clientX + 20,
+        y: event.clientY + 20,
+      };
+
+      this.cdr.markForCheck();
       return;
     }
     if (
@@ -373,9 +378,14 @@ export class Editor implements OnInit {
   // ==================================================
   // Device Inspector positioning
   // ==================================================
+  inspectorLocked = false;
+
+  toggleInspectorLock(): void {
+    this.inspectorLocked = !this.inspectorLocked;
+  }
+
   get deviceInspectorPosition(): { x: number; y: number } | undefined {
     const device = this.getSelectedDevice();
-
     if (!device || !this.mouseCursor) {
       return undefined;
     }
@@ -752,6 +762,10 @@ export class Editor implements OnInit {
       return;
     }
 
+    if (this.inspectorLocked) {
+      return;
+    }
+
     this.mouseCursor = {
       x: event.clientX,
       y: event.clientY,
@@ -786,7 +800,9 @@ export class Editor implements OnInit {
     this.editorStateService.selectedRoomId = null;
     this.editorStateService.selectedDoorId = null;
     this.editorStateService.selectedWindowId = null;
-    this.editorStateService.selectedDeviceId = null;
+    if (!this.inspectorLocked) {
+      this.editorStateService.selectedDeviceId = null;
+    }
 
     this.wallLengthInput = '';
     this.wallDimensionFocused = false;
@@ -838,13 +854,23 @@ export class Editor implements OnInit {
   }
   deleteSelectedDevice() {
     const deviceId = this.editorStateService.selectedDeviceId;
-
     if (!deviceId) {
       return;
     }
 
-    this.propertyService.removeDevice(deviceId);
+    const device = this.propertyService.property.devices.find((device) => device.id === deviceId);
 
+    if (!device) {
+      return;
+    }
+
+    const confirmed = confirm(`Are you sure you want to delete "${device.name}"?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    this.propertyService.removeDevice(deviceId);
     this.editorStateService.selectedDeviceId = null;
   }
 
@@ -1003,7 +1029,10 @@ export class Editor implements OnInit {
 
     this.draggingHAEntity = entity;
 
-    this.haDragPreview = this.getSvgPointFromWindow(event);
+    this.haDragPreview = {
+      x: event.clientX + 20,
+      y: event.clientY + 20,
+    };
 
     console.log('HA DRAG START:', entity);
   }
