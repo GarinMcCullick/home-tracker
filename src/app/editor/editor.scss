@@ -22,6 +22,225 @@
   cursor: pointer;
 }
 
+.ha-device-panel {
+  position: fixed;
+
+  top: 16px;
+  right: 16px;
+
+  width: 320px;
+
+  z-index: 1000;
+
+  background: rgba(25, 25, 28, 0.97);
+
+  border: 1px solid rgba(255, 255, 255, 0.12);
+
+  border-radius: 12px;
+
+  overflow: hidden;
+
+  color: white;
+
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.35);
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.ha-device-header {
+  width: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 12px 14px;
+
+  border: none;
+
+  background: transparent;
+
+  color: white;
+
+  cursor: pointer;
+
+  text-align: left;
+}
+
+.ha-device-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ha-device-title {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ha-home-icon {
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  width: 26px;
+  height: 26px;
+
+  border-radius: 7px;
+
+  background: rgba(255, 255, 255, 0.08);
+
+  font-size: 16px;
+}
+
+.ha-device-count {
+  min-width: 20px;
+
+  padding: 2px 6px;
+
+  border-radius: 10px;
+
+  background: rgba(255, 255, 255, 0.1);
+
+  color: rgba(255, 255, 255, 0.6);
+
+  font-size: 10px;
+
+  text-align: center;
+}
+
+.ha-chevron {
+  font-size: 18px;
+
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.ha-device-list {
+  max-height: 600px;
+
+  overflow-y: auto;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ha-group-header {
+  padding: 9px 14px 5px;
+
+  font-size: 10px;
+
+  font-weight: 700;
+
+  text-transform: uppercase;
+
+  letter-spacing: 0.08em;
+
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.ha-device {
+  width: 100%;
+
+  display: flex;
+  align-items: center;
+
+  gap: 10px;
+
+  padding: 9px 14px;
+
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+
+  background: transparent;
+
+  color: white;
+
+  text-align: left;
+
+  cursor: pointer;
+}
+
+.ha-device:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ha-device-icon {
+  width: 34px;
+  height: 34px;
+
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 8px;
+
+  background: rgba(255, 255, 255, 0.07);
+
+  font-size: 16px;
+}
+
+.ha-device-info {
+  min-width: 0;
+
+  flex: 1;
+}
+
+.ha-device-name {
+  overflow: hidden;
+
+  white-space: nowrap;
+
+  text-overflow: ellipsis;
+
+  font-size: 13px;
+
+  font-weight: 500;
+}
+
+.ha-device-state {
+  display: flex;
+
+  align-items: center;
+
+  gap: 5px;
+
+  margin-top: 3px;
+
+  font-size: 10px;
+
+  color: rgba(255, 255, 255, 0.4);
+
+  text-transform: uppercase;
+}
+
+.ha-device-state.on {
+  color: #7ee787;
+}
+
+.ha-state-dot {
+  width: 6px;
+  height: 6px;
+
+  border-radius: 50%;
+
+  background: currentColor;
+}
+.ha-device-empty {
+  padding: 25px 15px;
+
+  text-align: center;
+
+  font-size: 12px;
+
+  color: rgba(255, 255, 255, 0.4);
+}
+
 .workspace {
   flex: 1;
   overflow: hidden;
@@ -190,4 +409,162 @@
 
 .wall-delete-menu button:hover {
   background: #ffebee;
+}
+
+.ha-drag-preview {
+  opacity: 0.75;
+}
+
+.ha-drag-preview-circle {
+  fill: rgba(255, 255, 255, 0.12);
+
+  stroke: rgba(255, 255, 255, 0.7);
+
+  stroke-width: 2;
+
+  stroke-dasharray: 5 4;
+}
+
+.ha-drag-preview-icon {
+  font-size: 16px;
+
+  dominant-baseline: middle;
+}
+
+.ha-drag-preview-label {
+  font-size: 11px;
+
+  fill: white;
+
+  paint-order: stroke;
+
+  stroke: rgba(0, 0, 0, 0.8);
+
+  stroke-width: 3px;
+
+  stroke-linejoin: round;
+}
+
+.device-control-panel {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+
+  width: 280px;
+
+  background: #ffffff;
+  border: 1px solid #dcdcdc;
+  border-radius: 12px;
+
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+
+  z-index: 1000;
+
+  overflow: hidden;
+}
+
+.device-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  padding: 14px 16px;
+
+  border-bottom: 1px solid #eeeeee;
+}
+
+.device-panel-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.device-panel-subtitle {
+  margin-top: 3px;
+
+  font-size: 12px;
+  color: #888888;
+  text-transform: capitalize;
+}
+
+.device-panel-close {
+  width: 28px;
+  height: 28px;
+
+  border: none;
+  background: transparent;
+
+  font-size: 22px;
+  color: #777;
+
+  cursor: pointer;
+}
+
+.device-panel-body {
+  padding: 16px;
+}
+
+.device-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  margin-bottom: 14px;
+
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.state-dot {
+  width: 9px;
+  height: 9px;
+
+  border-radius: 50%;
+
+  background: #999;
+}
+
+.state-dot.on {
+  background: #35c759;
+}
+
+.device-toggle {
+  width: 100%;
+
+  padding: 10px;
+
+  border: none;
+  border-radius: 8px;
+
+  background: #eeeeee;
+
+  cursor: pointer;
+}
+
+.device-toggle.active {
+  background: #222;
+  color: white;
+}
+
+.control-group {
+  margin-top: 18px;
+}
+
+.control-label {
+  display: flex;
+  justify-content: space-between;
+
+  margin-bottom: 8px;
+
+  font-size: 13px;
+}
+
+.control-group input[type='range'] {
+  width: 100%;
+}
+
+.device-unlinked {
+  padding: 16px;
+
+  font-size: 13px;
+  color: #777;
 }

@@ -16,6 +16,14 @@ export interface HALight {
   attributes: Record<string, any>;
 }
 
+export interface HAEntity {
+  entityId: string;
+  name: string;
+  domain: string;
+  state: string;
+  attributes: Record<string, any>;
+}
+
 export interface MmWaveTarget {
   x: number | null;
   y: number | null;
@@ -47,6 +55,14 @@ export class HomeAssistantService {
   private readonly lightsSubject = new BehaviorSubject<HALight[]>([]);
 
   readonly lights$ = this.lightsSubject.asObservable();
+
+  private readonly entitiesSubject = new BehaviorSubject<HAEntity[]>([]);
+
+  readonly entities$ = this.entitiesSubject.asObservable();
+
+  private emitEntities(): void {
+    this.entitiesSubject.next(this.getEntities());
+  }
 
   // ==================================================
   // APOLLO
@@ -679,7 +695,11 @@ export class HomeAssistantService {
           this.processApolloState(state);
         }
       }
+      this.emitEntities();
+
       this.lightsSubject.next(this.getLightEntities());
+
+      console.log('HA ENTITIES:', this.getEntities());
 
       console.log('HA LIGHTS LOADED:', this.getLightEntities());
     }
@@ -702,6 +722,8 @@ export class HomeAssistantService {
 
     this.states.set(state.entity_id, state);
 
+    this.emitEntities();
+
     if (state.entity_id.startsWith('light.')) {
       this.lightsSubject.next(this.getLightEntities());
     }
@@ -711,6 +733,51 @@ export class HomeAssistantService {
     }
 
     this.processApolloState(state);
+  }
+
+  // ==================================================
+  // Helpers
+  // ==================================================
+
+  private callService(domain: string, service: string, serviceData: Record<string, any>): void {
+    this.send({
+      id: this.messageId++,
+      type: 'call_service',
+      domain,
+      service,
+      service_data: serviceData,
+    });
+  }
+
+  toggle(entityId: string): void {
+    const domain = entityId.split('.')[0];
+
+    this.callService(domain, 'toggle', {
+      entity_id: entityId,
+    });
+  }
+
+  turnOn(entityId: string): void {
+    const domain = entityId.split('.')[0];
+
+    this.callService(domain, 'turn_on', {
+      entity_id: entityId,
+    });
+  }
+
+  turnOff(entityId: string): void {
+    const domain = entityId.split('.')[0];
+
+    this.callService(domain, 'turn_off', {
+      entity_id: entityId,
+    });
+  }
+
+  setLightBrightness(entityId: string, brightness: number): void {
+    this.callService('light', 'turn_on', {
+      entity_id: entityId,
+      brightness,
+    });
   }
 
   // ==================================================
@@ -830,6 +897,34 @@ export class HomeAssistantService {
     }
 
     return lights;
+  }
+
+  getEntities(): HAEntity[] {
+    const entities: HAEntity[] = [];
+
+    for (const state of this.states.values()) {
+      if (!state?.entity_id) {
+        continue;
+      }
+
+      const [domain] = state.entity_id.split('.');
+
+      entities.push({
+        entityId: state.entity_id,
+        name: state.attributes?.['friendly_name'] ?? state.entity_id.replace(`${domain}.`, ''),
+        domain,
+        state: state.state,
+        attributes: state.attributes ?? {},
+      });
+    }
+
+    return entities.sort((a, b) => {
+      if (a.domain !== b.domain) {
+        return a.domain.localeCompare(b.domain);
+      }
+
+      return a.name.localeCompare(b.name);
+    });
   }
 
   // ==================================================

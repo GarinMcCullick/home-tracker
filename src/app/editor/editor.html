@@ -39,7 +39,141 @@
       Delete
     </button>
   </div>
+  <!-- HOME ASSISTANT PANEL -->
+  <div class="ha-device-panel">
+    <!-- HEADER -->
+    <button class="ha-device-header" (click)="toggleHADevices()">
+      <div class="ha-device-title">
+        <span class="ha-home-icon">⌂</span>
 
+        <span>Home Assistant</span>
+
+        <span class="ha-device-count">
+          {{ haEntities.length }}
+        </span>
+      </div>
+
+      <span class="ha-chevron">
+        {{ haDevicesOpen ? '⌃' : '⌄' }}
+      </span>
+    </button>
+
+    <!-- ENTITY LIST -->
+    <div class="ha-device-list" *ngIf="haDevicesOpen">
+      <ng-container
+        *ngFor="
+          let domain of [
+            'light',
+            'switch',
+            'sensor',
+            'binary_sensor',
+            'camera',
+            'climate',
+            'media_player',
+            'remote',
+            'cover',
+            'fan',
+          ]
+        "
+      >
+        <ng-container *ngIf="haEntities.filter((e) => e.domain === domain).length > 0">
+          <!-- GROUP HEADER -->
+          <div class="ha-group-header">
+            {{ getHADomainName(domain) }}
+          </div>
+
+          <!-- DEVICES -->
+          <button
+            class="ha-device"
+            *ngFor="let entity of haEntities.filter((e) => e.domain === domain)"
+            (mousedown)="startDraggingHAEntity($event, entity)"
+          >
+            <div class="ha-device-icon">
+              {{ getHAIcon(entity.domain) }}
+            </div>
+
+            <div class="ha-device-info">
+              <div class="ha-device-name">
+                {{ entity.name }}
+              </div>
+
+              <div
+                class="ha-device-state"
+                [class.on]="
+                  entity.state === 'on' || entity.state === 'home' || entity.state === 'playing'
+                "
+              >
+                <span class="ha-state-dot"></span>
+
+                {{ entity.state }}
+              </div>
+            </div>
+          </button>
+        </ng-container>
+      </ng-container>
+
+      <!-- NOTHING FOUND -->
+      <div class="ha-device-empty" *ngIf="haEntities.length === 0">
+        Connecting to Home Assistant...
+      </div>
+    </div>
+  </div>
+  <!--DEVICE CONTROL PANEL-->
+  <div class="device-control-panel" *ngIf="getSelectedDevice() as device">
+    <div class="device-panel-header">
+      <div>
+        <div class="device-panel-title">
+          {{ device.name }}
+        </div>
+
+        <div class="device-panel-subtitle">
+          {{ device.type }}
+        </div>
+      </div>
+
+      <button class="device-panel-close" (click)="clearSelection()">×</button>
+    </div>
+
+    <div class="device-panel-body" *ngIf="device.entityId; else unlinkedDevice">
+      <ng-container *ngIf="getSelectedDeviceLight() as light">
+        <div class="device-state">
+          <span class="state-dot" [class.on]="light.state === 'on'"></span>
+
+          {{ light.state }}
+        </div>
+
+        <button
+          class="device-toggle"
+          [class.active]="light.state === 'on'"
+          (click)="toggleSelectedDevice()"
+        >
+          {{ light.state === 'on' ? 'Turn Off' : 'Turn On' }}
+        </button>
+
+        <div class="control-group" *ngIf="light.attributes['brightness'] != null">
+          <div class="control-label">
+            <span>Brightness</span>
+
+            <span>
+              {{ light.attributes['brightness'] }}
+            </span>
+          </div>
+
+          <input
+            type="range"
+            min="1"
+            max="255"
+            [value]="light.attributes['brightness']"
+            (input)="setSelectedLightBrightness($event)"
+          />
+        </div>
+      </ng-container>
+    </div>
+
+    <ng-template #unlinkedDevice>
+      <div class="device-unlinked">This device isn't linked to Home Assistant.</div>
+    </ng-template>
+  </div>
   <!-- WORKSPACE -->
   <div class="workspace">
     <div>Walls: {{ propertyService.property.walls.length }}</div>
@@ -466,6 +600,23 @@
             />
           }
         }
+      </g>
+      <!-- HA DEVICE DRAG PREVIEW -->
+      <g
+        *ngIf="draggingHAEntity && haDragPreview"
+        [attr.transform]="'translate(' + haDragPreview.x + ',' + haDragPreview.y + ')'"
+        class="ha-drag-preview"
+        pointer-events="none"
+      >
+        <circle r="22" class="ha-drag-preview-circle" />
+
+        <text x="0" y="4" text-anchor="middle" class="ha-drag-preview-icon">
+          {{ getHAIcon(draggingHAEntity.domain) }}
+        </text>
+
+        <text x="0" y="38" text-anchor="middle" class="ha-drag-preview-label">
+          {{ draggingHAEntity.name }}
+        </text>
       </g>
     </svg>
 
