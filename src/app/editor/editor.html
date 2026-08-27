@@ -128,6 +128,8 @@
     [light]="getSelectedDeviceLight()"
     [initialPosition]="deviceInspectorPosition"
     (close)="clearSelection()"
+    (delete)="deleteSelectedDevice()"
+    (lockToggle)="toggleInspectorLock()"
   >
   </app-device-inspector>
   <!-- WORKSPACE -->
@@ -557,25 +559,22 @@
           }
         }
       </g>
-      <!-- HA DEVICE DRAG PREVIEW -->
-      <g
-        *ngIf="draggingHAEntity && haDragPreview"
-        [attr.transform]="'translate(' + haDragPreview.x + ',' + haDragPreview.y + ')'"
-        class="ha-drag-preview"
-        pointer-events="none"
-      >
-        <circle r="22" class="ha-drag-preview-circle" />
-
-        <text x="0" y="4" text-anchor="middle" class="ha-drag-preview-icon">
-          {{ getHAIcon(draggingHAEntity.domain) }}
-        </text>
-
-        <text x="0" y="38" text-anchor="middle" class="ha-drag-preview-label">
-          {{ draggingHAEntity.name }}
-        </text>
-      </g>
     </svg>
+    <!-- HA DEVICE DRAG PREVIEW -->
+    <div
+      *ngIf="draggingHAEntity && haDragPreview"
+      class="ha-drag-preview"
+      [style.left.px]="haDragPreview.x"
+      [style.top.px]="haDragPreview.y"
+    >
+      <div class="ha-drag-preview-circle">
+        {{ getHAIcon(draggingHAEntity.domain) }}
+      </div>
 
+      <div class="ha-drag-preview-label">
+        {{ draggingHAEntity.name }}
+      </div>
+    </div>
     <!-- ================================================== -->
     <!-- WALL DIMENSION EDITOR -->
     <!-- Hidden while dragging so it cannot interfere -->

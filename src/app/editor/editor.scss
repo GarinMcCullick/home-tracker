@@ -412,37 +412,30 @@
 }
 
 .ha-drag-preview {
-  opacity: 0.75;
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-25%, -25%);
 }
 
 .ha-drag-preview-circle {
-  fill: rgba(255, 255, 255, 0.12);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
-  stroke: rgba(255, 255, 255, 0.7);
-
-  stroke-width: 2;
-
-  stroke-dasharray: 5 4;
+.ha-drag-preview-label {
+  text-align: center;
+  white-space: nowrap;
 }
 
 .ha-drag-preview-icon {
   font-size: 16px;
 
   dominant-baseline: middle;
-}
-
-.ha-drag-preview-label {
-  font-size: 11px;
-
-  fill: white;
-
-  paint-order: stroke;
-
-  stroke: rgba(0, 0, 0, 0.8);
-
-  stroke-width: 3px;
-
-  stroke-linejoin: round;
 }
 
 .device-control-panel {

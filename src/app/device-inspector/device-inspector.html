@@ -11,6 +11,14 @@
         {{ device?.type }}
       </div>
     </div>
+    <button
+      type="button"
+      class="inspector-lock-button"
+      (click)="lockToggle.emit()"
+      [title]="locked ? 'Unlock inspector' : 'Lock inspector'"
+    >
+      {{ locked ? '🔒' : '🔓' }}
+    </button>
 
     <button class="close-button" (mousedown)="$event.stopPropagation()" (click)="closeInspector()">
       ×
@@ -121,5 +129,8 @@
 
       <div class="coming-soon">Media controls</div>
     </ng-container>
+    <button type="button" class="delete-device-button" (click)="deleteDevice()">
+      Delete Device
+    </button>
   </div>
 </div>
